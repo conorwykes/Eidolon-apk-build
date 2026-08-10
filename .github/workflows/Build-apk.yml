@@ -1,7 +1,12 @@
-name: Build Eidolon Frontier v51 APK
+name: Build Eidolon Frontier v52 APK
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: GitHub Release tag for the v52 artifacts
+        required: true
+        default: v52
 
 permissions:
   contents: write
@@ -15,20 +20,31 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Download v51 source from latest GitHub Release
+      - name: Prepare checked-in v52 source and backup ZIP
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release download \
-            --repo "${GITHUB_REPOSITORY}" \
-            --pattern 'Eidolon-Frontier-v51-Portraits-VFX-Variety-Perf.zip' \
-            --dir .
-          test -s Eidolon-Frontier-v51-Portraits-VFX-Variety-Perf.zip
+
+          # Eidolon-Frontier/ is now the authoritative editable source. Keep a
+          # clean backup ZIP, then build from a disposable copy because the APK
+          # path-rewrite step intentionally modifies its working tree.
+          test -f Eidolon-Frontier/package.json
+          test -f Eidolon-Frontier/package-lock.json
+          test -f Eidolon-Frontier/app/page.tsx
+
+          rm -f Eidolon-Frontier-v52-Crash-Fix.zip
+          zip -qr Eidolon-Frontier-v52-Crash-Fix.zip Eidolon-Frontier \
+            -x 'Eidolon-Frontier/node_modules/*' \
+               'Eidolon-Frontier/dist/*' \
+               'Eidolon-Frontier/mobile-dist/*' \
+               'Eidolon-Frontier/.sites-runtime/*' \
+               'Eidolon-Frontier/.vinext/*' \
+               'Eidolon-Frontier/.wrangler/*'
+          test -s Eidolon-Frontier-v52-Crash-Fix.zip
+
           rm -rf source
-          mkdir source
-          unzip -q Eidolon-Frontier-v51-Portraits-VFX-Variety-Perf.zip -d source
+          mkdir -p source
+          cp -a Eidolon-Frontier source/Eidolon-Frontier
           test -f source/Eidolon-Frontier/package.json
 
       - name: Set up Node 22
@@ -38,7 +54,7 @@ jobs:
           cache: npm
           cache-dependency-path: source/Eidolon-Frontier/package-lock.json
 
-      - name: Build v51 as an offline mobile web bundle
+      - name: Build v52 as an offline mobile web bundle
         shell: bash
         working-directory: source/Eidolon-Frontier
         run: |
@@ -213,8 +229,8 @@ jobs:
                   applicationId 'com.eidolon.frontier'
                   minSdk 24
                   targetSdk 35
-                  versionCode 51
-                  versionName '51.0'
+                  versionCode 52
+                  versionName '52.0'
               }
 
               signingConfigs {
@@ -366,7 +382,7 @@ jobs:
           }
           JAVA
 
-      - name: Build signed v51 release APK
+      - name: Build signed v52 release APK
         shell: bash
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -382,29 +398,39 @@ jobs:
           set -euo pipefail
           APKSIGNER="$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner"
           "$APKSIGNER" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
-          cp app/build/outputs/apk/release/app-release.apk Eidolon-Frontier-v51.apk
-          sha256sum Eidolon-Frontier-v51.apk > Eidolon-Frontier-v51.apk.sha256
+          cp app/build/outputs/apk/release/app-release.apk Eidolon-Frontier-v52.apk
+          sha256sum Eidolon-Frontier-v52.apk > Eidolon-Frontier-v52.apk.sha256
 
-      - name: Upload APK as Actions artifact
+      - name: Upload v52 APK and editable-source backup
         uses: actions/upload-artifact@v4
         with:
-          name: Eidolon-Frontier-v51-APK
+          name: Eidolon-Frontier-v52-Release
           path: |
-            Eidolon-Frontier-v51.apk
-            Eidolon-Frontier-v51.apk.sha256
+            Eidolon-Frontier-v52.apk
+            Eidolon-Frontier-v52.apk.sha256
+            Eidolon-Frontier-v52-Crash-Fix.zip
           if-no-files-found: error
           compression-level: 0
 
-      - name: Attach APK to latest GitHub Release
+      - name: Attach v52 APK and source backup to GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
-          RELEASE_TAG="$(gh release view --repo "${GITHUB_REPOSITORY}" --json tagName --jq .tagName)"
-          echo "Uploading APK to release tag: ${RELEASE_TAG}"
+
+          if ! gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release create "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "Eidolon Frontier v52" \
+              --notes "Signed v52 APK and editable-source backup. The repository source tree is authoritative."
+          fi
+
+          echo "Uploading v52 artifacts to release tag: ${RELEASE_TAG}"
           gh release upload "${RELEASE_TAG}" \
-            Eidolon-Frontier-v51.apk \
-            Eidolon-Frontier-v51.apk.sha256 \
+            Eidolon-Frontier-v52.apk \
+            Eidolon-Frontier-v52.apk.sha256 \
+            Eidolon-Frontier-v52-Crash-Fix.zip \
             --repo "${GITHUB_REPOSITORY}" \
             --clobber
