@@ -195,6 +195,11 @@ jobs:
           }
           GRADLE
 
+          cat > gradle.properties <<'PROPERTIES'
+          android.useAndroidX=true
+          android.enableJetifier=true
+          PROPERTIES
+
           cat > app/build.gradle <<'GRADLE'
           plugins {
               id 'com.android.application'
