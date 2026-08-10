@@ -21,7 +21,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release download v50-input \
+          gh release download \
             --repo "${GITHUB_REPOSITORY}" \
             --pattern 'Eidolon-Frontier-v50-FULL-VFX-STABLE.html' \
             --dir .
