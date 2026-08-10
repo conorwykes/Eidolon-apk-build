@@ -2476,3 +2476,86 @@ emblem{
 @media (max-width:400px){
   .detail-hero:has(.detail-portrait.detail-key-art){height:430px!important}
 }
+
+
+/* ========================================================================== 
+   v53 battle motion / home story gate corrections
+   ========================================================================== */
+.home-main-story-gate{
+  display:block;
+  position:relative;
+  z-index:5;
+  width:min(48vw,232px);
+  aspect-ratio:1;
+  margin:8px auto 10px;
+  padding:0;
+  border:0;
+  background:transparent;
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  clip-path:polygon(50% 0,91% 4%,100% 20%,98% 79%,91% 94%,50% 100%,9% 94%,2% 79%,0 20%,9% 4%);
+  filter:drop-shadow(0 9px 8px #0009) drop-shadow(0 0 8px #4abfff44);
+  transition:transform .16s ease,filter .16s ease;
+}
+.home-main-story-gate img{display:block;width:100%;height:100%;object-fit:contain;pointer-events:none;user-select:none}
+.home-main-story-gate:active{transform:scale(.965);filter:drop-shadow(0 4px 5px #000a) brightness(1.1)}
+
+/* Make every authored frame change read as an animation rather than an instant
+   image swap. Motion is deliberately small: the source drawings carry the
+   actual character acting. */
+.field-unit.active .sprite-frame.active{
+  animation:v53FramePose calc(.105s * var(--battle-time-scale)) cubic-bezier(.18,.8,.25,1) both!important;
+  transform-origin:50% 88%!important;
+}
+@keyframes v53FramePose{
+  0%{opacity:.86;scale:.97 1.015;translate:0 1px}
+  55%{opacity:1;scale:1.018 .992;translate:0 -1px}
+  100%{opacity:1;scale:1;translate:0 0}
+}
+
+/* Melee fighters still travel into their authored strike. Ranged fighters do
+   not; their drawings animate in place. */
+.field-unit.active.unit-kael:not(.attack-stage-return),
+.field-unit.active.unit-lyra:not(.attack-stage-return),
+.field-unit.active.unit-brannock:not(.attack-stage-return),
+.field-unit.active.unit-nyx:not(.attack-stage-return){
+  transform:translate(var(--contact-x),var(--contact-y)) scale(1.025)!important;
+}
+.field-unit.active.unit-kael.attack-stage-impact,
+.field-unit.active.unit-lyra.attack-stage-impact,
+.field-unit.active.unit-brannock.attack-stage-impact,
+.field-unit.active.unit-nyx.attack-stage-impact{transform:translate(calc(var(--contact-x) - 5px),calc(var(--contact-y) + 1px)) scale(1.07)!important}
+
+/* Zephyra must never hop left during a normal attack. Her bow/arrow animation
+   is entirely in her sprite frames and projectile layers. */
+.field-unit.unit-zephyra.active:not(.bursting),
+.field-unit.unit-zephyra.active:not(.bursting).attack-stage-approach,
+.field-unit.unit-zephyra.active:not(.bursting).attack-stage-windup,
+.field-unit.unit-zephyra.active:not(.bursting).attack-stage-release,
+.field-unit.unit-zephyra.active:not(.bursting).attack-stage-flight,
+.field-unit.unit-zephyra.active:not(.bursting).attack-stage-impact,
+.field-unit.unit-zephyra.active:not(.bursting).attack-stage-hitstop,
+.field-unit.unit-zephyra.active:not(.bursting).attack-stage-recover,
+.field-unit.unit-zephyra.active:not(.bursting).attack-stage-return{
+  transform:translate(0,0) scale(1)!important;
+  animation:none!important;
+  transition:none!important;
+}
+.field-unit.unit-zephyra.active:not(.bursting) .battle-unit-sprite{transform:none!important}
+
+/* Solenne is also planted, but her six drawn staff poses now visibly animate.
+   The slight pose pulse is local to the sprite, never the formation slot. */
+.field-unit.unit-solenne.active:not(.bursting){transform:translate(0,0) scale(1)!important;animation:none!important;transition:none!important}
+.field-unit.unit-solenne.active:not(.bursting) .sprite-frame.active{animation:v53SolenneCast calc(.14s * var(--battle-time-scale)) ease-out both!important}
+@keyframes v53SolenneCast{
+  0%{opacity:.84;scale:.975;translate:0 2px}
+  52%{opacity:1;scale:1.025;translate:0 -2px}
+  100%{opacity:1;scale:1;translate:0 0}
+}
+
+/* Keep ordinary contact VFX compact and lower on the enemy body. */
+.remotion-attack{transform:translateY(10px) scale(.88);transform-origin:50% 58%}
+.remotion-burst{transform:translateY(8px) scale(.94);transform-origin:50% 58%}
+.solenne-judgement-beam{bottom:-2px;scale:.9;transform-origin:50% 100%}
+
+@media (max-width:370px){.home-main-story-gate{width:min(46vw,198px);margin-top:5px}}

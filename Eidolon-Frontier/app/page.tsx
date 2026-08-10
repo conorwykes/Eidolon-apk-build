@@ -556,9 +556,9 @@ const NORMAL_ATTACK_CHAINS: Partial<Record<BattleUnitId, readonly NormalAttackBe
     { frame: 7, multiplier: 0.6, pose: 1, tick: 2 },
   ],
   solenne: [
-    { frame: 5, multiplier: 0.8, pose: 0, tick: 0 },
+    { frame: 4, multiplier: 0.8, pose: 0, tick: 0 },
     { frame: 5, multiplier: 1.2, pose: 0, tick: 1 },
-    { frame: 5, multiplier: 0.8, pose: 1, tick: 0 },
+    { frame: 4, multiplier: 0.8, pose: 1, tick: 0 },
     { frame: 5, multiplier: 1.2, pose: 1, tick: 1 },
   ],
   // Kael is a Breaker: two aggressive lunges, the second ending on a heavy
@@ -612,23 +612,23 @@ const NORMAL_ATTACK_CHAINS: Partial<Record<BattleUnitId, readonly NormalAttackBe
 const NORMALISE_AUTHORED_CHAINS = true;
 
 const ZEPHYRA_VOLLEY_DRAW_SEQUENCE = [
-  { frame: 0, stage: "windup", hold: 30 },
-  { frame: 1, stage: "windup", hold: 36 },
-  { frame: 2, stage: "windup", hold: 44 },
-  { frame: 3, stage: "windup", hold: 72 },
-  { frame: 4, stage: "release", hold: 26 },
-  { frame: 5, stage: "flight", hold: 80 },
+  { frame: 0, stage: "windup", hold: 64 },
+  { frame: 1, stage: "windup", hold: 72 },
+  { frame: 2, stage: "windup", hold: 78 },
+  { frame: 3, stage: "windup", hold: 92 },
+  { frame: 4, stage: "release", hold: 54 },
+  { frame: 5, stage: "flight", hold: 96 },
 ] as const satisfies readonly { frame: number; stage: AttackStage; hold: number }[];
 
-const ZEPHYRA_RANGED_ADVANCE = 0.16;
+const ZEPHYRA_RANGED_ADVANCE = 0;
 
 const SOLENNE_BEAM_CAST_SEQUENCE = [
-  { frame: 0, stage: "windup", hold: 34 },
-  { frame: 1, stage: "windup", hold: 42 },
-  { frame: 2, stage: "windup", hold: 50 },
-  { frame: 3, stage: "release", hold: 58 },
-  { frame: 4, stage: "flight", hold: 36 },
-  { frame: 5, stage: "impact", hold: 72 },
+  { frame: 0, stage: "windup", hold: 72 },
+  { frame: 1, stage: "windup", hold: 82 },
+  { frame: 2, stage: "windup", hold: 88 },
+  { frame: 3, stage: "release", hold: 92 },
+  { frame: 4, stage: "flight", hold: 70 },
+  { frame: 5, stage: "impact", hold: 104 },
 ] as const satisfies readonly { frame: number; stage: AttackStage; hold: number }[];
 
 // Melee phrases open with their own short authored wind-up instead of jumping
@@ -2841,6 +2841,14 @@ export default function GatesOfAzura() {
           </div>
         </header>
 
+        <button
+          className="home-main-story-gate"
+          onClick={() => { playSfx("tap"); go("quests"); }}
+          aria-label="Enter the Main Story"
+        >
+          <img src="/ui/main-story-gate.png" alt="Main Story dragon gate" draggable={false} />
+        </button>
+
         <section
           className={`home-destination destination-${activeHomeDestination.tone}`}
           onPointerDown={beginHomeSwipe}
@@ -3295,7 +3303,7 @@ export default function GatesOfAzura() {
             instanceId={burstIntroFx.id}
             unitId={burstIntroUnit.id}
             burstName={burstIntroFx.label}
-            keyArtSrc={`/units/${burstIntroUnit.id}.png`}
+            keyArtSrc={burstIntroUnit.keyArt}
             speed={battleSpeed}
           />
         )}
