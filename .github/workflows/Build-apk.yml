@@ -1,21 +1,21 @@
-name: Build Eidolon Frontier v50 APK
+name: Build Eidolon Frontier v51 APK
 
 on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Download exact v50 game from GitHub Release
+      - name: Download v51 source from latest GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -23,10 +23,107 @@ jobs:
           set -euo pipefail
           gh release download \
             --repo "${GITHUB_REPOSITORY}" \
-            --pattern 'Eidolon-Frontier-v50-FULL-VFX-STABLE.html' \
+            --pattern 'Eidolon-Frontier-v51-Portraits-VFX-Variety-Perf.zip' \
             --dir .
-          echo "bfdcf9af868f460163c8aa822e2e95dba5bd270857f2d2de33034de730fdae21  Eidolon-Frontier-v50-FULL-VFX-STABLE.html" | sha256sum -c -
-          test "$(stat -c%s Eidolon-Frontier-v50-FULL-VFX-STABLE.html)" -eq 67623207
+          test -s Eidolon-Frontier-v51-Portraits-VFX-Variety-Perf.zip
+          rm -rf source
+          mkdir source
+          unzip -q Eidolon-Frontier-v51-Portraits-VFX-Variety-Perf.zip -d source
+          test -f source/Eidolon-Frontier/package.json
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: source/Eidolon-Frontier/package-lock.json
+
+      - name: Build v51 as an offline mobile web bundle
+        shell: bash
+        working-directory: source/Eidolon-Frontier
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+
+          # The normal project build targets Cloudflare/Vinext. For the APK we
+          # compile the client-rendered game directly with Vite, preserving all
+          # public sprites, portraits, audio, stages and VFX.
+          cat > mobile-entry.tsx <<'TSX'
+          import React from 'react';
+          import { createRoot } from 'react-dom/client';
+          import Game from './app/page';
+          import './app/globals.css';
+
+          const root = document.getElementById('root');
+          if (!root) throw new Error('Missing #root');
+          createRoot(root).render(<Game />);
+          TSX
+
+          cat > index.html <<'HTML'
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="UTF-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+              <meta name="theme-color" content="#080b13" />
+              <title>Eidolon Frontier</title>
+            </head>
+            <body>
+              <div id="root"></div>
+              <script type="module" src="/mobile-entry.tsx"></script>
+            </body>
+          </html>
+          HTML
+
+          cat > mobile.vite.config.mjs <<'JS'
+          import { defineConfig } from 'vite';
+          import react from '@vitejs/plugin-react';
+
+          export default defineConfig({
+            base: '/assets/',
+            plugins: [react()],
+            publicDir: 'public',
+            build: {
+              outDir: 'mobile-dist',
+              emptyOutDir: true,
+              sourcemap: false,
+            },
+          });
+          JS
+
+          # In the Android WebView, game files are served from the secure
+          # /assets/ URL space. Rewrite the game's root-relative media paths to
+          # that URL space without changing gameplay code.
+          python3 - <<'PY'
+          from pathlib import Path
+
+          files = [
+              Path('app/page.tsx'),
+              Path('app/globals.css'),
+              Path('remotion/BattleVfx.tsx'),
+              Path('remotion/Root.tsx'),
+          ]
+          roots = ['audio', 'units', 'sprites', 'effects', 'stages', 'destinations', 'enemies', 'fonts', 'icons']
+
+          for path in files:
+              if not path.exists():
+                  continue
+              text = path.read_text(encoding='utf-8')
+              for root in roots:
+                  text = text.replace(f'"/{root}/', f'"/assets/{root}/')
+                  text = text.replace(f"'/{root}/", f"'/assets/{root}/")
+              # Service workers are unnecessary inside the packaged APK and can
+              # fail to install on a synthetic WebView origin.
+              text = text.replace(
+                  'if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);',
+                  '/* APK: assets are packaged locally; no service worker required. */'
+              )
+              path.write_text(text, encoding='utf-8')
+          PY
+
+          npx vite build --config mobile.vite.config.mjs
+          test -f mobile-dist/index.html
+          test -d mobile-dist/assets
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -34,17 +131,44 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35 build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
       - name: Set up Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
 
-      - name: Create standard Android project
+      - name: Create Android wrapper
         shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
+
+          for secret_name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!secret_name:-}" ]; then
+              echo "Missing GitHub Actions secret: ${secret_name}" >&2
+              exit 1
+            fi
+          done
+
           mkdir -p app/src/main/java/com/eidolon/frontier
           mkdir -p app/src/main/assets
+          mkdir -p app/src/main/res/drawable
+
+          cp -a source/Eidolon-Frontier/mobile-dist/. app/src/main/assets/
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > eidolon-release.jks
 
           cat > settings.gradle <<'GRADLE'
           pluginManagement {
@@ -84,13 +208,33 @@ jobs:
                   applicationId 'com.eidolon.frontier'
                   minSdk 24
                   targetSdk 35
-                  versionCode 50
-                  versionName '50.0'
+                  versionCode 51
+                  versionName '51.0'
+              }
+
+              signingConfigs {
+                  release {
+                      storeFile file('../eidolon-release.jks')
+                      storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                      keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                      keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+                  }
+              }
+
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                      minifyEnabled false
+                  }
               }
 
               androidResources {
-                  noCompress += ['html']
+                  noCompress += ['html', 'js', 'css', 'webp', 'png', 'jpg', 'jpeg', 'svg', 'mp3', 'mp4', 'woff2']
               }
+          }
+
+          dependencies {
+              implementation 'androidx.webkit:webkit:1.12.1'
           }
           GRADLE
 
@@ -102,12 +246,12 @@ jobs:
               <application
                   android:allowBackup="false"
                   android:hardwareAccelerated="true"
-                  android:label="Eidolon Frontier v50"
+                  android:label="Eidolon Frontier"
                   android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen"
-                  android:usesCleartextTraffic="true">
+                  android:usesCleartextTraffic="false">
                   <activity
                       android:name=".MainActivity"
-                      android:configChanges="keyboardHidden|orientation|screenSize"
+                      android:configChanges="keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
                       android:exported="true"
                       android:screenOrientation="portrait">
                       <intent-filter>
@@ -125,12 +269,16 @@ jobs:
           import android.annotation.SuppressLint;
           import android.app.Activity;
           import android.graphics.Color;
+          import android.net.Uri;
           import android.os.Bundle;
-          import android.view.WindowManager;
-          import android.webkit.WebChromeClient;
+          import android.webkit.WebResourceRequest;
+          import android.webkit.WebResourceResponse;
           import android.webkit.WebSettings;
           import android.webkit.WebView;
-          import android.webkit.WebViewClient;
+          import android.view.WindowManager;
+
+          import androidx.webkit.WebViewAssetLoader;
+          import androidx.webkit.WebViewClientCompat;
 
           public class MainActivity extends Activity {
               private WebView webView;
@@ -139,30 +287,45 @@ jobs:
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
+
                   getWindow().setFlags(
                       WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                       WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
                   );
 
+                  final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
+                      .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+                      .build();
+
                   webView = new WebView(this);
                   webView.setBackgroundColor(Color.BLACK);
-                  webView.setWebViewClient(new WebViewClient());
-                  webView.setWebChromeClient(new WebChromeClient());
+                  webView.setWebChromeClient(new android.webkit.WebChromeClient());
+                  webView.setWebViewClient(new WebViewClientCompat() {
+                      @Override
+                      public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                          return assetLoader.shouldInterceptRequest(request.getUrl());
+                      }
+
+                      @Override
+                      @SuppressWarnings("deprecation")
+                      public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
+                          return assetLoader.shouldInterceptRequest(Uri.parse(url));
+                      }
+                  });
 
                   WebSettings settings = webView.getSettings();
                   settings.setJavaScriptEnabled(true);
                   settings.setDomStorageEnabled(true);
                   settings.setDatabaseEnabled(true);
-                  settings.setAllowFileAccess(true);
-                  settings.setAllowContentAccess(true);
-                  settings.setAllowFileAccessFromFileURLs(true);
-                  settings.setAllowUniversalAccessFromFileURLs(true);
                   settings.setMediaPlaybackRequiresUserGesture(false);
                   settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-                  settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+                  settings.setAllowFileAccess(false);
+                  settings.setAllowContentAccess(false);
+                  settings.setAllowFileAccessFromFileURLs(false);
+                  settings.setAllowUniversalAccessFromFileURLs(false);
 
                   setContentView(webView);
-                  webView.loadUrl("file:///android_asset/index.html");
+                  webView.loadUrl("https://appassets.androidplatform.net/assets/index.html");
               }
 
               @Override
@@ -198,29 +361,45 @@ jobs:
           }
           JAVA
 
-          cp Eidolon-Frontier-v50-FULL-VFX-STABLE.html app/src/main/assets/index.html
-
-      - name: Build properly signed debug APK
+      - name: Build signed v51 release APK
         shell: bash
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          gradle --no-daemon --stacktrace :app:assembleDebug
+          gradle --no-daemon --stacktrace :app:assembleRelease
 
-      - name: Verify APK with Android apksigner
+      - name: Verify signed APK
         shell: bash
         run: |
           set -euo pipefail
           APKSIGNER="$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner"
-          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk
-          cp app/build/outputs/apk/debug/app-debug.apk Eidolon-Frontier-v50.apk
-          sha256sum Eidolon-Frontier-v50.apk > Eidolon-Frontier-v50.apk.sha256
+          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
+          cp app/build/outputs/apk/release/app-release.apk Eidolon-Frontier-v51.apk
+          sha256sum Eidolon-Frontier-v51.apk > Eidolon-Frontier-v51.apk.sha256
 
-      - name: Upload installable APK
+      - name: Upload APK as Actions artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Eidolon-Frontier-v50-APK
+          name: Eidolon-Frontier-v51-APK
           path: |
-            Eidolon-Frontier-v50.apk
-            Eidolon-Frontier-v50.apk.sha256
+            Eidolon-Frontier-v51.apk
+            Eidolon-Frontier-v51.apk.sha256
           if-no-files-found: error
           compression-level: 0
+
+      - name: Attach APK to latest GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RELEASE_TAG="$(gh release view --repo "${GITHUB_REPOSITORY}" --json tagName --jq .tagName)"
+          echo "Uploading APK to release tag: ${RELEASE_TAG}"
+          gh release upload "${RELEASE_TAG}" \
+            Eidolon-Frontier-v51.apk \
+            Eidolon-Frontier-v51.apk.sha256 \
+            --repo "${GITHUB_REPOSITORY}" \
+            --clobber
