@@ -339,12 +339,12 @@ export function KaelFireBurstIntro({ burstName, keyArtSrc, unitId = "kael" }: Ka
           style={{
             position: "absolute",
             zIndex: 2,
-            left: "-2%",
-            bottom: "-24%",
-            width: "62%",
-            height: "142%",
+            left: "-4%",
+            bottom: "-8%",
+            width: "72%",
+            height: "126%",
             objectFit: "cover",
-            objectPosition: "50% 18%",
+            objectPosition: "50% 16%",
             opacity: interpolate(frame, [7, 16, durationInFrames - 10, durationInFrames - 2], [0, 1, 1, 0], {
               extrapolateLeft: "clamp",
               extrapolateRight: "clamp",

@@ -25,7 +25,7 @@ const point = (x: number, y: number, angle: number): WeaponContactOffset => ({ x
 // shared by normal attacks, Bursts, damage text and the contact pin so none of
 // those layers drift away from one another.
 export const BATTLE_CONTACT_GAP_X = 22;
-export const BATTLE_CONTACT_DROP_Y = 14;
+export const BATTLE_CONTACT_DROP_Y = 30;
 
 // Coordinates are measured from the enemy slot's visual centre. Positive X
 // moves the effect towards the incoming weapon on the enemy's right edge;
