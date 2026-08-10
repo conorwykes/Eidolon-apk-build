@@ -1,0 +1,193 @@
+name: Build Gates of Azura v56 APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: GitHub Release tag for the v56 APK
+        required: true
+        default: v56
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download and extract Gates of Azura v56 source from Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          rm -f Gates-of-Azura-v56-Source-for-GitHub.zip
+          gh release download "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern "Gates-of-Azura-v56-Source-for-GitHub.zip" \
+            --clobber
+          test -s Gates-of-Azura-v56-Source-for-GitHub.zip
+          unzip -tq Gates-of-Azura-v56-Source-for-GitHub.zip
+          rm -rf source
+          mkdir source
+          unzip -q Gates-of-Azura-v56-Source-for-GitHub.zip -d source
+          test -f source/package.json
+          test -f source/package-lock.json
+          test -f source/app/page.tsx
+          test -f source/android/app/build.gradle
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies and build offline mobile game
+        shell: bash
+        working-directory: source
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npm run android:prepare
+          test -f android/app/src/main/assets/www/index.html
+          test -d android/app/src/main/assets/www/assets
+
+      - name: Preserve existing Eidolon APK package identity
+        shell: bash
+        working-directory: source
+        run: |
+          set -euo pipefail
+          # Keep the same Android application ID as the existing v53 APK so
+          # Android treats Gates of Azura v56 as an update rather than a new app.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle')
+          text = p.read_text(encoding='utf-8')
+          text = text.replace("applicationId 'game.gatesofazura.app'", "applicationId 'com.eidolon.frontier'")
+
+          # Fix Gradle signing variable names. The original v56 file declared
+          # `storePassword` as a String and then used `storePassword storePassword`
+          # inside signingConfigs. Groovy treats that as calling the String,
+          # causing java.lang.String.call() during configuration.
+          text = text.replace(
+              "def storePassword = System.getenv('GOA_STORE_PASSWORD')",
+              "def storePasswordValue = System.getenv('GOA_STORE_PASSWORD')"
+          )
+          text = text.replace(
+              "def hasReleaseSigning = keystorePath && storePassword && keyAliasValue && keyPasswordValue",
+              "def hasReleaseSigning = keystorePath && storePasswordValue && keyAliasValue && keyPasswordValue"
+          )
+          text = text.replace(
+              "                storePassword storePassword",
+              "                storePassword storePasswordValue"
+          )
+
+          p.write_text(text, encoding='utf-8')
+
+          required = [
+              "applicationId 'com.eidolon.frontier'",
+              "def storePasswordValue = System.getenv('GOA_STORE_PASSWORD')",
+              "storePassword storePasswordValue",
+          ]
+          missing = [item for item in required if item not in text]
+          if missing:
+              raise SystemExit(f'Failed to patch Android build.gradle: {missing}')
+          PY
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-36" "build-tools;35.0.0" "platform-tools"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Restore existing release signing key
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for secret_name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!secret_name:-}" ]; then
+              echo "Missing existing GitHub Actions secret: ${secret_name}" >&2
+              exit 1
+            fi
+          done
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/gates-of-azura-release.jks"
+
+      - name: Build signed Gates of Azura v56 APK
+        shell: bash
+        working-directory: source
+        env:
+          GOA_KEYSTORE: ${{ github.workspace }}/gates-of-azura-release.jks
+          GOA_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          GOA_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          GOA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace -p android :app:assembleRelease
+
+      - name: Verify and name APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="source/android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          cp "$APK" Gates-of-Azura-v56.apk
+          sha256sum Gates-of-Azura-v56.apk > Gates-of-Azura-v56.apk.sha256
+
+      - name: Upload installable v56 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gates-of-Azura-v56-APK
+          path: |
+            Gates-of-Azura-v56.apk
+            Gates-of-Azura-v56.apk.sha256
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Create or update v56 GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Gates of Azura v56" \
+              --notes "Signed Gates of Azura v56 APK. Uses the existing com.eidolon.frontier application ID and signing key so it can update the previous APK installation."
+          fi
+
+          gh release upload "$RELEASE_TAG" \
+            Gates-of-Azura-v56.apk \
+            Gates-of-Azura-v56.apk.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
