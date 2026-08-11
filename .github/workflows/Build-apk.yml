@@ -128,6 +128,12 @@ jobs:
               for root in roots:
                   text = text.replace(f'"/{root}/', f'"/assets/{root}/')
                   text = text.replace(f"'/{root}/", f"'/assets/{root}/")
+                  # Most sprite/VFX paths are built from template literals
+                  # (backtick strings), not plain quotes — e.g.
+                  # `/sprites/units/${id}-idle-a.webp`. Missing this left the
+                  # large majority of in-game images unrewritten, so they
+                  # never resolved under the WebView's /assets/ origin.
+                  text = text.replace(f'`/{root}/', f'`/assets/{root}/')
               # Service workers are unnecessary inside the packaged APK and can
               # fail to install on a synthetic WebView origin.
               text = text.replace(
