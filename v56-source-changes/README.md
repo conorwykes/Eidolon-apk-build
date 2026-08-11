@@ -4,9 +4,11 @@ Drop-in replacement files for the `Gates-of-Azura-v56-Source-for-GitHub.zip`
 asset attached to the [v56 release](https://github.com/conorwykes/Eidolon-apk-build/releases/tag/v56).
 
 The GitHub MCP tools available in this session can't upload/replace release
-assets directly, so the full rebuilt zip was sent to the user as a chat file
-instead of being pushed here. These three files are included for review/diff
-purposes and mirror exactly what's inside that zip:
+assets directly, so the full rebuilt zip is included in this folder as
+`Gates-of-Azura-v56-Source-for-GitHub.zip` (identical filename to the release
+asset — download it from this branch and re-upload it to the release). The
+individual files below are included for review/diff purposes and mirror
+exactly what's inside that zip:
 
 - `app/page.tsx`
 - `app/globals.css`
