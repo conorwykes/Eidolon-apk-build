@@ -2771,19 +2771,16 @@ html.game-background-paused *::after{
 }
 .bottom-nav button{font:800 7px/1 "Cinzel",Georgia,serif!important;letter-spacing:.02em!important;gap:2px!important}
 .bottom-nav button span.nav-icon-frame{
-  position:relative;width:48px!important;height:38px!important;border:1px solid #7b6337!important;border-radius:5px!important;
-  overflow:hidden;background:linear-gradient(180deg,#182d35,#071217)!important;box-shadow:inset 0 0 0 1px #d2b46a22,0 3px 6px #0008!important;
+  position:relative;width:48px!important;height:38px!important;border:0!important;border-radius:5px!important;
+  overflow:visible;background:transparent!important;box-shadow:none!important;
 }
-.bottom-nav button span.nav-icon-frame::before{content:"";position:absolute;inset:2px;border:1px solid #f0d48520;border-radius:3px;pointer-events:none}
-.bottom-nav button span.nav-icon-frame::after{content:"";position:absolute;left:6px;right:6px;bottom:2px;height:9px;border-radius:50%;background:radial-gradient(ellipse,#dcb85b33,transparent 68%);pointer-events:none}
 .bottom-nav button span.nav-icon-frame>svg{position:relative;z-index:2;width:22px;height:22px;filter:drop-shadow(0 2px 2px #000b)}
-.bottom-nav button .nav-icon-home{color:#72ddf4!important;background:radial-gradient(circle at 50% 72%,#23778f55,transparent 45%),linear-gradient(#162c3b,#06121a)!important}
-.bottom-nav button .nav-icon-units{color:#f0ca69!important;background:radial-gradient(circle at 50% 68%,#ba7b3444,transparent 48%),linear-gradient(#33271c,#0d1417)!important}
-.bottom-nav button .nav-icon-town{color:#efb65e!important;background:linear-gradient(180deg,#274351,#8a512733 62%,#0b1518)!important}
-.bottom-nav button .nav-icon-shop{color:#e4ad58!important;background:radial-gradient(circle,#9b692e44,transparent 58%),linear-gradient(#30291f,#0b1519)!important}
-.bottom-nav button .nav-icon-summon{color:#cb8dff!important;background:radial-gradient(circle,#7443a966,transparent 52%),linear-gradient(#251c36,#09131a)!important}
-.bottom-nav button .nav-icon-arena{color:#ff927a!important;background:radial-gradient(circle,#9b3f3155,transparent 55%),linear-gradient(#34201e,#0c1418)!important}
-.bottom-nav button.active span.nav-icon-frame{border-color:#f1d180!important;box-shadow:inset 0 0 0 1px #fff0b544,0 0 13px #e2b85a55!important;transform:translateY(-1px)}
+.bottom-nav button.active span.nav-icon-frame{transform:translateY(-1px)}
+.bottom-nav button.active span.nav-icon-frame img{filter:drop-shadow(0 2px 3px #000b) drop-shadow(0 0 9px #e2b85a99)!important}
+.bottom-nav button.active span.nav-icon-frame::after{
+  content:"";position:absolute;left:50%;bottom:-4px;width:22px;height:2px;translate:-50% 0;
+  border-radius:2px;background:#f1d180;box-shadow:0 0 8px #f1d180cc;
+}
 
 /* Every menu/tab view is a portrait single-screen dashboard. Battle and story
    keep their own existing viewport choreography. */
@@ -2975,10 +2972,10 @@ html.game-background-paused *::after{
 .burst-bar{position:relative!important;top:auto!important;left:6px!important;right:6px!important;margin-top:3px!important}
 .support-link{height:64px!important}
 
-/* Illustrated nav/shop icons cropped from the MV icon sheet, dropped in
-   where the art is a real upgrade over the outline glyph (a gem for the
-   Summon gate you spend Aether Gems at, a chest for the Shop). */
-.bottom-nav button .nav-icon-frame img{position:relative;z-index:2;width:24px;height:24px;object-fit:contain;filter:drop-shadow(0 2px 2px #000b)}
+/* Illustrated nav icons (background-removed isometric art) for all six
+   bottom-nav destinations — no per-button box, just the artwork sitting
+   directly on the shared nav bar. */
+.bottom-nav button .nav-icon-frame img{position:relative;z-index:2;width:32px;height:32px;object-fit:contain;filter:drop-shadow(0 2px 3px #000c)}
 .shop-icon img{width:26px;height:26px;object-fit:contain}
 @media (max-height:730px){.podium-party{flex-basis:145px!important}.squad-builder-footer{display:none!important}}
 

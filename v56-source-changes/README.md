@@ -13,6 +13,8 @@ exactly what's inside that zip:
 - `app/page.tsx`
 - `app/globals.css`
 - `public/backgrounds/home-portal.webp` (new file)
+- `public/ui/icons/nav-home-house.png`, `nav-town-house.png`, `nav-units-swords.png`,
+  `nav-shop-chest.png`, `nav-summon-gate.png`, `nav-arena-coliseum.png` (new files)
 
 ## What changed
 
@@ -35,6 +37,17 @@ exactly what's inside that zip:
    is reachable.
 5. **Squad podium sizing** — the squad screen's 5 podium slots were
    `clamp(160px, 32%, 220px)` tall; reduced to `clamp(118px, 23%, 158px)`.
+6. **Bottom nav icons** — replaced the lucide glyphs/placeholder art with 6
+   supplied isometric illustrations (house, bigger house, crossed swords,
+   chest, rift portal, coliseum) for Home/Town/Units/Shop/Summon/Arena.
+   Each was background-removed (a per-row edge-sampled color distance mask,
+   flood-filled from the image border so only the true background is
+   stripped, not similarly-dark interior shading) and cropped to a padded
+   256×256 transparent PNG. The per-button boxed background/border
+   (`.nav-icon-frame`) was also stripped so the 6 icons sit directly on the
+   nav bar's own shared background instead of each having its own dark box
+   — reads as one continuous bar instead of 6 separate buttons. Active tab
+   now shows a small glowing underline instead of a bordered box.
 
 ## To apply this to the release
 

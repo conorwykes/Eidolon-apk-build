@@ -1369,12 +1369,12 @@ function AppHeader({
 
 function BottomNav({ screen, go, save }: { screen: Screen; go: (screen: Screen) => void; save: SaveState }) {
   const tabs: { id: Screen; label: string; Icon: LucideIcon; art?: string }[] = [
-    { id: "home", label: "Home", Icon: Home },
-    { id: "units", label: "Units", Icon: Users },
-    { id: "town", label: "Town", Icon: Castle },
+    { id: "home", label: "Home", Icon: Home, art: "/ui/icons/nav-home-house.png" },
+    { id: "units", label: "Units", Icon: Users, art: "/ui/icons/nav-units-swords.png" },
+    { id: "town", label: "Town", Icon: Castle, art: "/ui/icons/nav-town-house.png" },
     { id: "shop", label: "Shop", Icon: ShoppingBag, art: "/ui/icons/nav-shop-chest.png" },
-    { id: "summon", label: "Summon", Icon: Sparkles, art: "/ui/icons/nav-summon-gem.png" },
-    { id: "arena", label: "Arena", Icon: Swords },
+    { id: "summon", label: "Summon", Icon: Sparkles, art: "/ui/icons/nav-summon-gate.png" },
+    { id: "arena", label: "Arena", Icon: Swords, art: "/ui/icons/nav-arena-coliseum.png" },
   ];
   return (
     <nav className="bottom-nav" aria-label="Main navigation">
