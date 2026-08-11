@@ -42,7 +42,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   BATTLE_CONTACT_DROP_Y,
   BATTLE_CONTACT_GAP_X,
@@ -62,6 +62,8 @@ type Screen =
   | "inventory"
   | "modes"
   | "summon"
+  | "summon-chamber"
+  | "summon-reveal"
   | "town"
   | "battle"
   | "story"
@@ -376,6 +378,88 @@ const DEFAULT_GAME_SETTINGS: GameSettings = {
 const ENERGY_REGEN_MS = 2 * 60 * 1000;
 const ARENA_REGEN_MS = 15 * 60 * 1000;
 const MAX_ARENA_ORBS = 5;
+// Placeholder hold while there's no summon animation to fill this beat yet -
+// swap this out for a real animation later. The bloom's CSS animation
+// duration is driven by this same constant so the white-out finishes right
+// as the timer fires.
+const GATE_HOLD_MS = 4500;
+const GATE_BLOOM_FADE_MS = 550;
+// The charge-up glow's colour previews the rarity about to be revealed.
+// 2-star can't actually be rolled (StarTier is 3-5) but stays as the
+// fallback white, matching the requested "2* is white" baseline.
+const GATE_BLOOM_COLORS: Record<number, { core: string; mid: string; edge: string }> = {
+  3: { core: "#eef7ff", mid: "#8fc7ff", edge: "#2f7dff" },
+  4: { core: "#f6ecff", mid: "#c79bff", edge: "#8a3dff" },
+  5: { core: "#ffefe9", mid: "#ff8f77", edge: "#b3161f" },
+};
+const GATE_BLOOM_DEFAULT = { core: "#ffffff", mid: "#fdfaff", edge: "#e6d9ff" };
+// The ambient corona around the OUTSIDE of the whole gate silhouette
+// (.chamber-gate's own pulsing drop-shadow, independent of the void/gems
+// inside it) fades to this same rarity colour too, so the entire portal -
+// not just its interior - reads as charging toward that colour. lo/hi are
+// the two ends of the existing breathe-in/breathe-out pulse.
+const GATE_GLOW_COLORS: Record<number, { lo: string; hi: string }> = {
+  3: { lo: "#4f90ff44", hi: "#4f90ff8c" },
+  4: { lo: "#9a54ff44", hi: "#9a54ff8c" },
+  5: { lo: "#ff474744", hi: "#ff47478c" },
+};
+const GATE_GLOW_DEFAULT = { lo: "#7b6bff44", hi: "#7b6bff8c" };
+// The portal's own inner glow (.gate-void-glow) fades from its resting
+// purple to this same rarity colour over GATE_HOLD_MS, so the void itself
+// visibly shifts hue as it charges rather than just sitting behind a
+// colour that changes around it. Alpha suffixes match the resting values
+// (5c/30) so only the hue changes, not the overall glow strength.
+const GATE_VOID_COLORS: Record<number, { core: string; mid: string }> = {
+  3: { core: "#9ecbff5c", mid: "#2f6fd930" },
+  4: { core: "#caa8ff5c", mid: "#7443a930" },
+  5: { core: "#ff9d8f5c", mid: "#b3161f30" },
+};
+const GATE_VOID_DEFAULT = { core: "#caa8ff5c", mid: "#7443a930" };
+// gate-void-swirl.webp is a standalone sprite cut from the void's own nebula
+// + crystal-crown artwork (see v56-source-changes/README.md), painted over
+// the same baked texture in gate-structure.webp so it can carry its own
+// recolourable filter instead of fighting the structure image's fixed
+// pixels. All four filter lists share the same hue-rotate/saturate/
+// brightness function shape (just different parameters) so the browser can
+// interpolate between them smoothly rather than snapping.
+const GATE_VOID_SWIRL = { width: 44.24, height: 41.328 };
+const GATE_VOID_SWIRL_IDLE = "hue-rotate(0deg) saturate(1) brightness(1)";
+const GATE_VOID_SWIRL_FILTERS: Record<number, string> = {
+  3: "hue-rotate(-48deg) saturate(1.1) brightness(1)",
+  4: "hue-rotate(4deg) saturate(1.05) brightness(1)",
+  5: "hue-rotate(99deg) saturate(1.15) brightness(1.05)",
+};
+const GATE_VOID_SWIRL_FALLBACK = "hue-rotate(0deg) saturate(0.12) brightness(1.6)";
+// The 7 floating gem sprites (cut from the same source as the void's own
+// crystal crown - see GATE_FLOATERS below) sit around 250deg, close enough
+// to the void's own base hue that the same hue-rotate treatment reads
+// consistently. drop-shadow is folded into every entry (not just left in
+// the stylesheet) so the whole filter list transitions as one unit - a
+// transition can't blend an inline filter against a separate stylesheet
+// filter underneath it. The sprites themselves had their baked ambient
+// halo masked back to the crystal's own bright pixels (see
+// v56-source-changes/README.md), so a small 3px drop-shadow reads as a
+// tight glow instead of the colour bleeding out past the gem shape.
+const GATE_GEM_FILTER_IDLE = "hue-rotate(0deg) saturate(1) brightness(1) drop-shadow(0 0 3px #9b6bf7a0)";
+const GATE_GEM_FILTERS: Record<number, string> = {
+  3: "hue-rotate(-37deg) saturate(1.1) brightness(1) drop-shadow(0 0 3px #6bb0f7a0)",
+  4: "hue-rotate(15deg) saturate(1.05) brightness(1) drop-shadow(0 0 3px #9b6bf7a0)",
+  5: "hue-rotate(108deg) saturate(1.15) brightness(1.05) drop-shadow(0 0 3px #ff5f5fa0)",
+};
+const GATE_GEM_FILTER_FALLBACK = "hue-rotate(0deg) saturate(0.12) brightness(1.6) drop-shadow(0 0 3px #ffffffa0)";
+// Layout for the gate artwork: the void's position within /summon/gate-structure.webp,
+// and the 7 free-floating gem sprites cut from the same source (see
+// v56-source-changes/README.md for how these were produced).
+const GATE_VOID = { left: 48.68, top: 40.36, width: 31.6, height: 29.52 };
+const GATE_FLOATERS = [
+  { name: "top", left: 40.98, top: 6.7, width: 4.19 },
+  { name: "upper-left", left: 22.91, top: 16.42, width: 5.92 },
+  { name: "upper-right", left: 77.14, top: 16.51, width: 6.01 },
+  { name: "mid-left", left: 16.62, top: 26.66, width: 4.28 },
+  { name: "mid-right", left: 83.47, top: 26.71, width: 4.46 },
+  { name: "lower-right", left: 88.02, top: 42.41, width: 4.64 },
+  { name: "lower-left", left: 12.16, top: 42.45, width: 4.46 },
+];
 
 function formatRegenTime(milliseconds: number) {
   const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1000));
@@ -1198,6 +1282,89 @@ function UnitPortrait({ unit, className = "", stars = 5 }: { unit: Unit; classNa
   );
 }
 
+// Shared gate artwork: the stone-arch structure image with its 7 free-
+// floating gem sprites, plus a void-aligned slot (GATE_VOID) for whatever
+// idle glow / video sequence a given screen wants to layer over the void.
+function GateArt({
+  children,
+  voidClassName = "",
+  voidCore = GATE_VOID_DEFAULT.core,
+  voidMid = GATE_VOID_DEFAULT.mid,
+  voidFilter = GATE_VOID_SWIRL_IDLE,
+  voidFadeMs,
+  gemFilter = GATE_GEM_FILTER_IDLE,
+}: {
+  children?: ReactNode;
+  voidClassName?: string;
+  // The void's inner glow colour - defaults to its resting purple. Screens
+  // that want it to fade toward a rarity colour (the chamber, while
+  // charging) pass the target colour plus how long that fade should take;
+  // the underlying transition on --void-core/--void-mid then animates it,
+  // same idea as the bloom colour but transitioned instead of keyframed
+  // since this element is always mounted (never a fresh-mount fade-in).
+  voidCore?: string;
+  voidMid?: string;
+  // Recolours the void's own swirl artwork (gate-void-swirl.webp) via a
+  // hue-rotate/saturate/brightness filter - defaults to a no-op filter so
+  // the sprite reads exactly as its baked purple. Same voidFadeMs drives
+  // both this and the glow colour so they land in sync.
+  voidFilter?: string;
+  voidFadeMs?: number;
+  // Same idea, applied to all 7 floating gem sprites at once.
+  gemFilter?: string;
+}) {
+  return (
+    <>
+      <img className="gate-structure" src="/summon/gate-structure.webp" alt="The Aether Gate, a stone archway holding a swirling void" draggable={false} />
+      <img
+        className="gate-void-swirl"
+        src="/summon/gate-void-swirl.webp"
+        alt=""
+        draggable={false}
+        style={{
+          left: `${GATE_VOID.left}%`,
+          top: `${GATE_VOID.top}%`,
+          width: `${GATE_VOID_SWIRL.width}%`,
+          height: `${GATE_VOID_SWIRL.height}%`,
+          filter: voidFilter,
+          ...(voidFadeMs ? { transitionDuration: `${voidFadeMs}ms` } : {}),
+        } as CSSProperties}
+      />
+      {GATE_FLOATERS.map((gem) => (
+        <img
+          key={gem.name}
+          className={`gate-gem-float gate-gem-${gem.name}`}
+          src={`/summon/gate-gem-${gem.name}.webp`}
+          alt=""
+          draggable={false}
+          style={{
+            left: `${gem.left}%`,
+            top: `${gem.top}%`,
+            width: `${gem.width}%`,
+            filter: gemFilter,
+            ...(voidFadeMs ? { transitionDuration: `${voidFadeMs}ms` } : {}),
+          } as CSSProperties}
+        />
+      ))}
+      <div
+        className={`gate-void-fx ${voidClassName}`}
+        aria-hidden="true"
+        style={{ left: `${GATE_VOID.left}%`, top: `${GATE_VOID.top}%`, width: `${GATE_VOID.width}%`, height: `${GATE_VOID.height}%` } as CSSProperties}
+      >
+        <span
+          className="gate-void-glow"
+          style={{
+            "--void-core": voidCore,
+            "--void-mid": voidMid,
+            ...(voidFadeMs ? { transitionDuration: `${voidFadeMs}ms` } : {}),
+          } as CSSProperties}
+        />
+        {children}
+      </div>
+    </>
+  );
+}
+
 function UnitKeyArt({ unit, className = "" }: { unit: Unit; className?: string }) {
   const [failed, setFailed] = useState(false);
   return (
@@ -1442,6 +1609,18 @@ export default function GatesOfAzura() {
     label: "",
   });
   const [summonResult, setSummonResult] = useState<SummonResult | null>(null);
+  const [pendingSummon, setPendingSummon] = useState<SummonResult | null>(null);
+  const [fadeBlack, setFadeBlack] = useState(false);
+  const fadeTimeout = useRef<number | null>(null);
+  const [gateCharging, setGateCharging] = useState(false);
+  const [gateBloom, setGateBloom] = useState<"off" | "growing" | "fading">("off");
+  const [gateBloomColor, setGateBloomColor] = useState(GATE_BLOOM_DEFAULT);
+  const [gateVoidColor, setGateVoidColor] = useState(GATE_VOID_DEFAULT);
+  const [gateVoidFilter, setGateVoidFilter] = useState(GATE_VOID_SWIRL_IDLE);
+  const [gateGemFilter, setGateGemFilter] = useState(GATE_GEM_FILTER_IDLE);
+  const [gateGlowColor, setGateGlowColor] = useState(GATE_GLOW_DEFAULT);
+  const gateHoldTimeout = useRef<number | null>(null);
+  const gateBloomTimeout = useRef<number | null>(null);
   const [selectedHelper, setSelectedHelper] = useState("Mira");
   const [modeTab, setModeTab] = useState<"events" | "trials">("events");
   const [inventoryTab, setInventoryTab] = useState<"relics" | "materials" | "items">("relics");
@@ -1830,6 +2009,19 @@ export default function GatesOfAzura() {
     setMenuOpen(false);
     setScreen(next);
     window.scrollTo({ top: 0, behavior: "auto" });
+  };
+
+  // Fades the whole app to black, swaps the screen (and runs any state
+  // change that should land while nothing is visible), then fades back in.
+  const FADE_MS = 380;
+  const fadeToScreen = (next: Screen, onCommit?: () => void) => {
+    if (fadeTimeout.current !== null) window.clearTimeout(fadeTimeout.current);
+    setFadeBlack(true);
+    fadeTimeout.current = window.setTimeout(() => {
+      onCommit?.();
+      go(next);
+      fadeTimeout.current = window.setTimeout(() => setFadeBlack(false), 20);
+    }, FADE_MS);
   };
 
   const toggleSound = () => {
@@ -2752,6 +2944,7 @@ export default function GatesOfAzura() {
   };
 
   const summon = (gate: "aether" | "covenant" = "aether") => {
+    if (pendingSummon) return;
     if (gate === "aether" && save.gems < 5) {
       setToast("You need 5 Aether Gems");
       return;
@@ -2760,7 +2953,6 @@ export default function GatesOfAzura() {
       setToast("You need 200 Covenant Points");
       return;
     }
-    playSfx("summon");
     const available = UNITS.filter((unit) => !save.owned.includes(unit.id));
     const result = available[Math.floor(Math.random() * available.length)] ?? UNITS[Math.floor(Math.random() * UNITS.length)];
     const roll = Math.random();
@@ -2780,8 +2972,44 @@ export default function GatesOfAzura() {
       summonPity: gate === "aether" ? (stars === 5 ? 0 : current.summonPity + 1) : current.summonPity,
       summonHistory: [`${stars}★ ${result.name}${duplicate ? " · Echo" : ""}`, ...current.summonHistory].slice(0, 12),
     }));
-    setSummonResult({ unit: result, stars, duplicate });
-    playSfx(stars === 5 ? "evolve" : "crystal");
+    // The result is locked in now (currency already spent); the chamber
+    // screen shows the gate before it's revealed.
+    setPendingSummon({ unit: result, stars, duplicate });
+    fadeToScreen("summon-chamber");
+  };
+
+  // The bloom starts as a small glow on the gate and grows over GATE_HOLD_MS
+  // until it has swallowed the whole screen in white; the actual screen
+  // swap happens at that instant (invisible, since everything is already
+  // white), then the bloom fades away to reveal the result underneath -
+  // a white-out instead of the usual black fade for this one transition.
+  const beginGateSequence = () => {
+    if (!pendingSummon || fadeBlack || gateCharging) return;
+    const result = pendingSummon;
+    playSfx("summon");
+    setGateCharging(true);
+    // Captured now (not read live from state) so the fade at the end still
+    // matches the colour the growth played in, even after pendingSummon and
+    // summonResult have already moved on.
+    setGateBloomColor(GATE_BLOOM_COLORS[result.stars] ?? GATE_BLOOM_DEFAULT);
+    setGateVoidColor(GATE_VOID_COLORS[result.stars] ?? GATE_VOID_DEFAULT);
+    setGateVoidFilter(GATE_VOID_SWIRL_FILTERS[result.stars] ?? GATE_VOID_SWIRL_FALLBACK);
+    setGateGemFilter(GATE_GEM_FILTERS[result.stars] ?? GATE_GEM_FILTER_FALLBACK);
+    setGateGlowColor(GATE_GLOW_COLORS[result.stars] ?? GATE_GLOW_DEFAULT);
+    setGateBloom("growing");
+    gateHoldTimeout.current = window.setTimeout(() => {
+      gateHoldTimeout.current = null;
+      setSummonResult(result);
+      playSfx(result.stars === 5 ? "evolve" : "crystal");
+      setPendingSummon(null);
+      setGateCharging(false);
+      go("summon-reveal");
+      setGateBloom("fading");
+      gateBloomTimeout.current = window.setTimeout(() => {
+        gateBloomTimeout.current = null;
+        setGateBloom("off");
+      }, GATE_BLOOM_FADE_MS);
+    }, GATE_HOLD_MS);
   };
 
   const toggleSquadUnit = (id: string) => {
@@ -3720,27 +3948,132 @@ export default function GatesOfAzura() {
         <h1>Call beyond<br />the <em>Veil</em></h1>
         <p>Every summon reveals an original hero. Undiscovered units are guaranteed while the archive has space.</p>
         <div className="summon-resonance"><div><span>5★ RESONANCE PITY</span><strong>{save.summonPity}/10</strong></div><i><b style={{ width: `${Math.min(100, save.summonPity * 10)}%` }} /></i><small>The tenth Aether call is guaranteed to awaken at 5★</small></div>
-        <div className="summon-portal"><span className="portal-ring ring-one" /><span className="portal-ring ring-two" /><span className="portal-core" /><div className="summon-motes" aria-hidden="true">{Array.from({ length: 8 }, (_, index) => <i key={index} />)}</div><Gem size={54} /></div>
+        <div className="summon-portal"><GateArt /></div>
         <div className="featured-row">
           {[getUnit("nyx"), getUnit("zephyra"), getUnit("solenne")].map((unit) => <UnitPortrait key={unit.id} unit={unit} stars={5} />)}
         </div>
-        <div className="summon-actions"><button className="summon-button" onClick={() => summon("aether")}><Sparkles />AETHER CALL<span>5 <Gem size={15} /></span></button><button className="summon-button covenant-button" onClick={() => summon("covenant")}><Users />COVENANT CALL<span>200 <Sparkles size={15} /></span></button></div>
+        {pendingSummon ? (
+          <div className="summon-actions">
+            <button className="summon-button" onClick={() => go("summon-chamber")}><Sparkles />RETURN TO THE GATE<span>Awaiting</span></button>
+          </div>
+        ) : (
+          <div className="summon-actions">
+            <button className="summon-button" onClick={() => summon("aether")}><Sparkles />AETHER CALL<span>5 <Gem size={15} /></span></button>
+            <button className="summon-button covenant-button" onClick={() => summon("covenant")}><Users />COVENANT CALL<span>200 <Sparkles size={15} /></span></button>
+          </div>
+        )}
         <small className="rates">5★ 8% · 4★ 42% · 3★ 50% · No purchases in this prototype</small>
         <div className="summon-history"><div><small>COVENANT POINTS</small><strong>{save.covenantPoints.toLocaleString()}</strong></div><div><small>RECENT CALLS</small><p>{save.summonHistory.length ? save.summonHistory.slice(0, 3).join(" · ") : "No calls recorded yet"}</p></div></div>
       </section>
-      {summonResult && (
-        <div className="result-overlay summon-result" onClick={() => setSummonResult(null)}>
-          <div className={`summoned-card ${summonResult.unit.element} rarity-${summonResult.stars}`} onClick={(event) => event.stopPropagation()}>
-            <small>{summonResult.duplicate ? "ECHO CONVERTED · +8 SHARDS" : "THE AETHER ANSWERS"}</small><Stars count={summonResult.stars} />
-            <UnitPortrait unit={summonResult.unit} stars={summonResult.stars} />
-            <ElementBadge element={summonResult.unit.element} />
-            <h2>{summonResult.unit.name}</h2><p>{summonResult.unit.formTitles[summonResult.stars]}</p>
-            <button onClick={() => { setSummonResult(null); go("units"); }}>View evolution path</button>
-          </div>
-        </div>
-      )}
     </>
   );
+
+  const leaveGateSequence = () => {
+    if (fadeBlack) return;
+    if (gateHoldTimeout.current !== null) {
+      window.clearTimeout(gateHoldTimeout.current);
+      gateHoldTimeout.current = null;
+    }
+    if (gateBloomTimeout.current !== null) {
+      window.clearTimeout(gateBloomTimeout.current);
+      gateBloomTimeout.current = null;
+    }
+    setGateCharging(false);
+    setGateBloom("off");
+    fadeToScreen("summon");
+  };
+
+  const renderSummonChamber = () => (
+    <section className="chamber-stage">
+      <img className="chamber-backdrop" src="/summon/chamber-cell.jpg" alt="A stone chamber lit by the gate's glow" draggable={false} />
+      <span className="chamber-backdrop-tint" aria-hidden="true" />
+      <button type="button" className="chamber-back" onClick={leaveGateSequence} aria-label="Go back"><ChevronLeft /></button>
+      <button
+        type="button"
+        className="chamber-gate"
+        onClick={beginGateSequence}
+        disabled={fadeBlack || gateCharging}
+        aria-label="Press the gate to begin the summon"
+        style={
+          gateCharging
+            ? {
+                "--gate-glow-lo": gateGlowColor.lo,
+                "--gate-glow-hi": gateGlowColor.hi,
+                transitionDuration: `${GATE_HOLD_MS}ms`,
+              } as CSSProperties
+            : undefined
+        }
+      >
+        {gateCharging && (
+          <span
+            className="chamber-gate-bloom"
+            style={{
+              animationDuration: `${GATE_HOLD_MS}ms`,
+              "--bloom-core": gateBloomColor.core,
+              "--bloom-mid": gateBloomColor.mid,
+              "--bloom-edge": gateBloomColor.edge,
+            } as CSSProperties}
+          />
+        )}
+        {/* A separate layer from the bloom above - if the fade-out lived on
+            .chamber-gate itself, opacity would multiply into the bloom span
+            too (opacity compounds with descendants) and dim it right as it's
+            supposed to be growing to full strength. */}
+        <span
+          className={`chamber-gate-art ${gateCharging ? "charging" : ""}`}
+          style={gateCharging ? { animationDuration: `${GATE_HOLD_MS}ms` } as CSSProperties : undefined}
+        >
+          <GateArt
+            voidCore={gateCharging ? gateVoidColor.core : undefined}
+            voidMid={gateCharging ? gateVoidColor.mid : undefined}
+            voidFilter={gateCharging ? gateVoidFilter : undefined}
+            gemFilter={gateCharging ? gateGemFilter : undefined}
+            voidFadeMs={GATE_HOLD_MS}
+          />
+        </span>
+      </button>
+      <p className="chamber-prompt">{gateCharging ? "THE GATE STIRS…" : "TAP THE GATE"}</p>
+    </section>
+  );
+
+  const renderSummonReveal = () => {
+    if (!summonResult) {
+      return (
+        <>
+          <AppHeader save={save} title="The Aether Answers" onBack={() => go("home")} soundOn={soundOn} onSoundToggle={toggleSound} />
+          <section className="summon-reveal-stage"><p>Nothing to reveal yet.</p><button className="primary-cta" onClick={() => go("summon")}>Return to the Gate</button></section>
+        </>
+      );
+    }
+    const unit = summonResult.unit;
+    return (
+      <>
+        <AppHeader save={save} title="The Aether Answers" onBack={() => { setSummonResult(null); go("home"); }} soundOn={soundOn} onSoundToggle={toggleSound} />
+        <section className="summon-reveal-stage">
+          <small>{summonResult.duplicate ? "ECHO CONVERTED · +8 SHARDS" : "A NEW HERO ANSWERS"}</small>
+          <Stars count={summonResult.stars} />
+          <button
+            type="button"
+            className={`summon-reveal-box ${unit.element}`}
+            onPointerDown={() => beginUnitHold(unit.id, summonResult.stars)}
+            onPointerLeave={clearUnitHold}
+            onPointerCancel={clearUnitHold}
+            onClick={() => finishUnitPress(() => setToast("Hold to view unit details"))}
+            aria-label={`${unit.name}, hold to view unit details`}
+          >
+            <UnitPortrait unit={unit} stars={summonResult.stars} />
+          </button>
+          <h1>{unit.name}</h1>
+          <p>{unit.formTitles[summonResult.stars]}</p>
+          <small className="summon-reveal-hint">Hold the box to view full unit details</small>
+          <div className="summon-reveal-actions">
+            <button className="primary-cta" onClick={() => { setSummonResult(null); go("units"); }}>Build squad</button>
+            <button onClick={() => { setSummonResult(null); go("summon"); }}>Return to the Gate</button>
+          </div>
+        </section>
+      </>
+    );
+  };
 
   const renderTown = () => (
     <>
@@ -3840,16 +4173,18 @@ export default function GatesOfAzura() {
               : screen === "inventory" ? renderInventory()
                 : screen === "modes" ? renderModes()
                   : screen === "summon" ? renderSummon()
-                    : screen === "town" ? renderTown()
-                      : screen === "arena" ? renderArena()
-                        : screen === "missions" ? renderMissions()
-                          : renderShop();
+                    : screen === "summon-chamber" ? renderSummonChamber()
+                      : screen === "summon-reveal" ? renderSummonReveal()
+                        : screen === "town" ? renderTown()
+                          : screen === "arena" ? renderArena()
+                            : screen === "missions" ? renderMissions()
+                              : renderShop();
 
   return (
     <main className="game-shell">
       <div className={`game-app screen-${screen} ${gameSettings.reducedEffects ? "reduced-effects" : ""}`} data-soundtrack={musicTrackKey} data-music-state={soundOn ? "playing" : "muted"}>
         {content}
-        {!(["battle", "story"] as Screen[]).includes(screen) && <BottomNav screen={screen} go={go} save={save} />}
+        {!(["battle", "story", "summon-chamber", "summon-reveal"] as Screen[]).includes(screen) && <BottomNav screen={screen} go={go} save={save} />}
         {menuOpen && (
           <div className="menu-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setMenuOpen(false); }}>
             <section className="menu-panel" role="dialog" aria-modal="true" aria-labelledby="menu-title">
@@ -3964,6 +4299,19 @@ export default function GatesOfAzura() {
         })()}
         {toast && <div className="toast" role="status">{toast}</div>}
       </div>
+      <div className={`fade-overlay ${fadeBlack ? "active" : ""}`} aria-hidden="true" />
+      {gateBloom === "fading" && (
+        <div className="gate-bloom fading" aria-hidden="true">
+          <span
+            className="gate-bloom-core"
+            style={{
+              "--bloom-core": gateBloomColor.core,
+              "--bloom-mid": gateBloomColor.mid,
+              "--bloom-edge": gateBloomColor.edge,
+            } as CSSProperties}
+          />
+        </div>
+      )}
       <aside className="desktop-note"><Sparkles /><h2>Gates of Azura</h2><p>A portrait RPG designed for touch. Open this page on Android and choose <strong>Add to Home screen</strong> for the app experience.</p><span>ORIGINAL PLAYABLE PROTOTYPE</span></aside>
       {(!hydrated || !titleAssetsReady) && (
         <div className="title-gate title-gate-loading" role="status" aria-live="polite">

@@ -15,6 +15,8 @@ exactly what's inside that zip:
 - `public/backgrounds/home-portal.webp` (new file)
 - `public/ui/icons/nav-home-house.png`, `nav-town-house.png`, `nav-units-swords.png`,
   `nav-shop-chest.png`, `nav-summon-gate.png`, `nav-arena-coliseum.png` (new files)
+- `public/summon/gate-structure.webp`, `gate-void-swirl.webp`, `gate-gem-*.webp` (7 files),
+  `chamber-cell.jpg` (new files)
 
 ## What changed
 
@@ -48,6 +50,53 @@ exactly what's inside that zip:
    nav bar's own shared background instead of each having its own dark box
    — reads as one continuous bar instead of 6 separate buttons. Active tab
    now shows a small glowing underline instead of a bordered box.
+7. **Summon chamber** — tapping a summon button now fades to black, then
+   fades into a new full-bleed "chamber" screen: a stone-cell backdrop
+   (`chamber-cell.jpg`) with the Aether Gate portal (`gate-structure.webp`)
+   centred on it, no header/nav chrome. The portal is built from real
+   artwork (not the earlier CSS-drawn gem/circle placeholder) — a stone
+   archway with 7 free-floating gem sprites cut from the same source, each
+   independently drifting on its own loop.
+   - **Charging.** Tapping the gate starts a ~4.5s charge: a colour bloom
+     starts small behind the gate (`.chamber-gate-bloom`, z-index 0, under
+     the gate art) and grows to cover the whole screen, while the gate art
+     itself (`.chamber-gate-art`, a sibling of the bloom rather than its
+     parent so their opacities don't compound) fades to nothing over the
+     same span, so the gate visibly dissolves into the colour instead of
+     just being covered by it.
+   - **Rarity colour.** The bloom's colour previews the roll: white (2★,
+     unreachable but kept as the fallback), blue (3★), purple (4★), deep
+     red (5★). The same colour now also drives three more layers so the
+     *whole* portal — not just the screen-covering bloom — reads as
+     charging toward it:
+     - the void's own inner nebula, extracted from the structure image into
+       its own sprite (`gate-void-swirl.webp`, masked by luminance so only
+       the bright crystal/nebula pixels carry over — the baked-in dark
+       ambient halo around it was cut, otherwise the recolour bled outside
+       the swirl's own shape) and recoloured with a real hue-rotate/
+       saturate/brightness filter (not a colour overlay — overlaying a
+       wash over the original baked purple couldn't out-compete how
+       saturated that artwork already was, so this actually shifts the
+       pixels instead);
+     - all 7 floating gem sprites, same filter treatment (their own baked
+       ambient halo was masked back to the crystal for the same reason);
+     - the outer corona (`.chamber-gate`'s pulsing drop-shadow around the
+       whole gate silhouette) via `--gate-glow-lo`/`--gate-glow-hi`.
+     All of the above are registered `@property` custom colours
+     (`--void-core`, `--void-mid`, `--gate-glow-lo`, `--gate-glow-hi`) so
+     the browser can transition them as real colours instead of snapping.
+   - **Reveal.** When the timer completes, the result is set, the screen
+     swaps straight to a new `summon-reveal` screen (already fully coloured
+     underneath, since the bloom is mid-fade at that instant), and the
+     bloom fades away over the following ~550ms to reveal the hero
+     underneath — a colour-out instead of the usual black fade for this one
+     transition. The reveal screen shows the hero in a square box (styled
+     like the Squad Builder's unit boxes) with the same long-press-to-open
+     unit-detail overlay reused from there, plus "Build squad" / "Return to
+     the Gate" actions.
+   - Backing out of the chamber (the back button) cancels all pending
+     timers and fades back to the Summon tab, which shows a "Return to the
+     Gate" button instead of the call buttons while a result is pending.
 
 ## To apply this to the release
 
