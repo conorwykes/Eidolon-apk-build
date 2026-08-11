@@ -5,7 +5,13 @@ import test from "node:test";
 const developmentPreviewMeta =
   /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
 
-test("renders development preview metadata", async () => {
+test("renders development preview metadata", async (t) => {
+  try {
+    await stat(new URL("../dist/server/index.js", import.meta.url));
+  } catch (error) {
+    if (error?.code === "ENOENT") return t.skip("server build is not produced by the offline mobile build");
+    throw error;
+  }
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
@@ -61,102 +67,147 @@ test("uses exact per-hit combat modifiers and continuous Burst animation", async
 test("plays Zephyra's charged bow volleys and Solenne's planted beam invocations in grouped packets", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-  const serviceWorker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
-
-  assert.match(source, /zephyra: \[\s*\{ frame: 5, multiplier: 1, pose: 0, tick: 0 \},\s*\{ frame: 6, multiplier: 0\.6, pose: 0, tick: 1 \},\s*\{ frame: 7, multiplier: 0\.6, pose: 0, tick: 2 \},\s*\{ frame: 5, multiplier: 1, pose: 1, tick: 0 \},\s*\{ frame: 6, multiplier: 0\.6, pose: 1, tick: 1 \},\s*\{ frame: 7, multiplier: 0\.6, pose: 1, tick: 2 \},\s*\]/);
-  assert.match(source, /solenne: \[\s*\{ frame: 5, multiplier: 0\.8, pose: 0, tick: 0 \},\s*\{ frame: 5, multiplier: 1\.2, pose: 0, tick: 1 \},\s*\{ frame: 5, multiplier: 0\.8, pose: 1, tick: 0 \},\s*\{ frame: 5, multiplier: 1\.2, pose: 1, tick: 1 \},\s*\]/);
-  assert.match(source, /const hits = burst \? \(stars < 5 \? 6 : unit\.burstHits\) : normalAttackChain\.length;/);
-  assert.match(source, /frame: burst \|\| unit\.id === "zephyra" \|\| unit\.id === "solenne" \? 0 : normalAttackChain\[0\]\?\.frame \?\? 0/);
+  assert.match(source, /const RANGED_NORMAL_UNITS = new Set<BattleUnitId>\(\["zephyra", "solenne"\]\)/);
+  assert.match(source, /const hits = burst \? combatProfile\.burstHits : normalAttackChain\.length;/);
   assert.match(source, /const hitMultiplier = burst \? 1 \/ animationSteps : normalBeat\.multiplier;/);
   assert.match(source, /hit: burst \? step \+ 1 : attackFrame \+ 1/);
-  assert.match(source, /previousNormalBeat\.pose !== normalBeat\.pose/);
-  assert.match(source, /const ZEPHYRA_VOLLEY_DRAW_SEQUENCE = \[\s*\{ frame: 0, stage: "windup", hold: 30 \},\s*\{ frame: 1, stage: "windup", hold: 36 \},\s*\{ frame: 2, stage: "windup", hold: 44 \},\s*\{ frame: 3, stage: "windup", hold: 72 \},\s*\{ frame: 4, stage: "release", hold: 26 \},\s*\{ frame: 5, stage: "flight", hold: 80 \},\s*\]/);
-  assert.match(source, /zephyra: ZEPHYRA_VOLLEY_DRAW_SEQUENCE/);
+  assert.match(source, /getNormalCastSequence\(unit\.id, stars\)/);
   assert.match(source, /for \(const drawing of castSequence\)/);
-  assert.match(source, /frame: drawing\.frame,[\s\S]*?stage: drawing\.stage/);
   assert.match(source, /className="zephyra-arrow-flight"/);
   assert.match(source, /className=\{`zephyra-bow-lightning lightning-stage-\$\{attackFx\.stage\}`\}/);
-  assert.match(source, /const SOLENNE_BEAM_CAST_SEQUENCE = \[\s*\{ frame: 0, stage: "windup", hold: 34 \},\s*\{ frame: 1, stage: "windup", hold: 42 \},\s*\{ frame: 2, stage: "windup", hold: 50 \},\s*\{ frame: 3, stage: "release", hold: 58 \},\s*\{ frame: 4, stage: "flight", hold: 36 \},\s*\{ frame: 5, stage: "impact", hold: 72 \},\s*\]/);
-  assert.match(source, /solenne: SOLENNE_BEAM_CAST_SEQUENCE/);
-  assert.match(source, /const castSequence = !burst && startsNormalPose \? NORMAL_CAST_SEQUENCES\[unit\.id\] : undefined;/);
   assert.match(source, /className=\{`solenne-judgement-beam solenne-beam-stage-\$\{solenneBeamFx\.stage\}`\}/);
-  assert.match(source, /rapidNormalChain \? startsNormalPose \? 42 : 10/);
-  assert.match(source, /endsNormalPose && step < animationSteps - 1\s*\?\s*getNormalCadence\(unit\.id\)\.phrase\s*:\s*getNormalCadence\(unit\.id\)\.tick/);
-  assert.match(source, /zephyra: \{ tick: 10, phrase: 140 \}/);
-  assert.match(source, /solenne: \{ tick: 10, phrase: 140 \}/);
-  assert.match(source, /getNormalAttackChain\(selectedUnit, 5\)\.length}-HIT NORMAL CHAIN/);
-  assert.match(source, /beat\.pose !== chain\[index - 1\]\.pose/);
-  assert.match(styles, /impact-unit-zephyra:not\(\.burst-impact\)>strong/);
-  assert.match(styles, /impact-unit-solenne:not\(\.burst-impact\)>strong/);
+  assert.match(source, /burstDoesDamage: false/);
+  assert.match(source, /supportBurst = burst && !combatProfile\.burstDoesDamage/);
+  assert.match(source, /const damage = burst && !combatProfile\.burstDoesDamage\s*\? 0/);
+  assert.match(source, /healing burst/i);
   assert.match(styles, /@keyframes zephyraDetachedArrow/);
   assert.match(styles, /@keyframes zephyraBowRicochet/);
-  // Regression: a six-arc ring drew a visible hexagon around her. The charge
-  // must stay on the bow, so more than three arcs is a defect.
   assert.doesNotMatch(styles, /\.zephyra-bow-lightning>i:nth-child\(4\)/);
   assert.match(styles, /\.zephyra-bow-lightning>i:nth-child\(3\)/);
   assert.match(source, /Array\.from\(\{ length: 3 \}, \(_, arc\) => <i key=\{arc\} \/>\)/);
   assert.match(styles, /var\(--arrow-travel-x\)/);
   assert.match(source, /const arrowAngle = Math\.atan2\(arrowTravelY, arrowTravelX\) \* 180 \/ Math\.PI - 180;/);
-  assert.match(styles, /\.zephyra-arrow-flight\{[\s\S]*?width:40px;[\s\S]*?height:12px;[\s\S]*?rotate:var\(--arrow-angle\)/);
-  assert.match(styles, /translate:calc\(-50% \+ var\(--arrow-travel-x\)\) calc\(-50% \+ var\(--arrow-travel-y\)\)/);
-  assert.match(styles, /\.field-unit\.unit-solenne\.active:not\(\.bursting\)\{[\s\S]*?transform:translate\(0,0\) scale\(1\.025\)!important/);
   assert.match(styles, /@keyframes solenneBeamRain/);
   assert.match(styles, /@keyframes solenneFloorSeal/);
-  assert.match(serviceWorker, /const CACHE = "gates-of-azura-v36";/);
 });
 
-test("ships every identity-matched hero frame with grounded action travel", async () => {
-  const motionSets = {
-    kael: { normal: 5, burst: 12 },
-    lyra: { normal: 6, burst: 10 },
-    brannock: { normal: 3, burst: 8 },
-    zephyra: { normal: 8, burst: 16 },
-    solenne: { normal: 6, burst: 8 },
-    nyx: { normal: 9, burst: 18 },
-  };
-
-  for (const [unit, counts] of Object.entries(motionSets)) {
-    const relativePaths = [
-      `../public/sprites/units/${unit}-idle-a.webp`,
-      `../public/sprites/units/${unit}-idle-b.webp`,
-      ...Array.from({ length: counts.normal }, (_, index) => `../public/sprites/units/${unit}-attack-${index + 1}.webp`),
-      ...Array.from({ length: counts.burst }, (_, index) => `../public/sprites/units/burst/${unit}-burst-${index + 1}.webp`),
-    ];
-    for (const relativePath of relativePaths) {
-      const metadata = await stat(new URL(relativePath, import.meta.url));
-      assert.ok(metadata.size > 8_000, `${relativePath} should contain a production sprite frame`);
+test("ships every tiered evolution frame with generous transparent gutters", async () => {
+  const units = ["kael", "lyra", "brannock", "zephyra", "solenne", "nyx"];
+  for (const unit of units) {
+    for (const stars of [2, 3, 4, 5]) {
+      for (const animation of ["idle", "attack", "burst"]) {
+        const frameCount = stars === 5 && animation === "idle" ? 6 : 4;
+        for (let frame = 1; frame <= frameCount; frame += 1) {
+          const relativePath = `../public/sprites/units/${unit}-evolution/frames/${stars}/${animation}-${frame}.webp`;
+          const metadata = await stat(new URL(relativePath, import.meta.url));
+          assert.ok(metadata.size > 10_000, `${relativePath} should contain a production sprite frame`);
+        }
+      }
+    }
+    const portrait = await stat(new URL(`../public/units/forms/${unit}-2.webp`, import.meta.url));
+    assert.ok(portrait.size > 10_000, `${unit} needs its 2-star portrait`);
+    for (const stars of [2, 3, 4, 5]) {
+      const rarityArt = await stat(new URL(`../public/units/rarity-art/${unit}-${stars}.webp`, import.meta.url));
+      const battleFace = await stat(new URL(`../public/units/battle-faces/${unit}-${stars}.webp`, import.meta.url));
+      assert.ok(rarityArt.size > 50_000, `${unit} ${stars}-star needs production UI key art`);
+      assert.ok(battleFace.size > 20_000, `${unit} ${stars}-star needs a battle face portrait`);
     }
   }
 
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(source, /const evolutionFrames =/);
+  assert.match(source, /const EVOLUTION_SPRITES =/);
+  assert.match(source, /return EVOLUTION_SPRITES\[unit\.id\]\[stars\]/);
+  assert.match(source, /`\/units\/rarity-art\/\$\{unit\.id\}-\$\{stars\}\.webp`/);
+  assert.match(source, /return getBattleSpriteSet\(unit, stars\)\.idle\[0\];/);
+  assert.match(source, /<BattleFacePortrait unit=\{unit\} stars=\{stars\} \/>/);
+  assert.match(source, /<UnitKeyArt unit=\{unit\} stars=\{stars\} \/>/);
   assert.match(source, /single-frame-renderer/);
   assert.match(source, /const activeSource =/);
   assert.match(source, /function StableBattleFrame/);
   assert.match(source, /nextFrame\.decode\(\)/);
   assert.match(source, /<StableBattleFrame/);
-  assert.match(source, /const normalFrame = attackFrame % Math\.max\(1, unit\.sprites\.attack\.length\);/);
-  assert.match(source, /const burstFrame = attackFrame % Math\.max\(1, unit\.sprites\.burst\.length\);/);
-  assert.match(source, /unit\.sprites\.attack\[normalFrame\]/);
-  assert.match(source, /unit\.sprites\.burst\[burstFrame\]/);
-  assert.match(source, /className="kael-burst-fullscreen-source"/);
-  assert.match(source, /fx\.unitId === "kael" && \(fx\.phase === "burst-intro" \|\| fx\.phase === "burst"\)/);
-  assert.match(source, /await waitForBattle\(180\);\n    \} else \{\n      await waitForBattle\(180\);/);
+  assert.match(source, /const normalFrame = attackFrame % Math\.max\(1, spriteSet\.attack\.length\);/);
+  assert.match(source, /const burstFrame = attackFrame % Math\.max\(1, spriteSet\.burst\.length\);/);
+  assert.match(source, /spriteSet\.attack\[normalFrame\]/);
+  assert.match(source, /spriteSet\.burst\[burstFrame\]/);
   assert.doesNotMatch(source, /<img key=\{frameKey\}/);
-  assert.doesNotMatch(source, /idle-element-fx/);
-  assert.match(source, /endsNormalPose && step < animationSteps - 1[\s\S]{0,160}getNormalCadence\(unit\.id\)\.phrase[\s\S]{0,80}getNormalCadence\(unit\.id\)\.tick/);
+  assert.doesNotMatch(source, /idle-element-motion/);
+  assert.match(source, /getBattleSpriteSet\(speakerUnit, speakerStars\)\.idle\[0\]/);
+  assert.match(source, /getNormalCadence\(unit\.id, stars\)\.phrase/);
+  assert.match(source, /getNormalCadence\(unit\.id, stars\)\.tick/);
   assert.match(styles, /single-frame-renderer \.sprite-frame\.active/);
-  assert.match(styles, /@keyframes idleBreathRig/);
-  assert.match(styles, /scaleY\(\.992\)/);
-  assert.match(styles, /unit-zephyra \.sprite-idle-a\{transform:translateY\(4\.2%\)/);
-  assert.match(styles, /unit-zephyra \.sprite-idle-b\{transform:translateX\(6\.54%\) translateY\(4\.2%\) scaleX\(1\.01\) scaleY\(\.985\)/);
-  assert.match(styles, /attack-stage-approach\{[\s\S]*?groundApproach calc\(\.18s \* var\(--battle-time-scale\)\)/);
-  assert.match(styles, /\.kael-burst-fullscreen-source\{[\s\S]*?opacity:\.8;[\s\S]*?mix-blend-mode:screen/);
-  assert.match(styles, /@keyframes kaelFullscreenSourceSequence\{[\s\S]*?0%\{opacity:\.8\}[\s\S]*?55%\{opacity:\.5\}[\s\S]*?100%\{opacity:\.65\}/);
-  assert.doesNotMatch(styles, /field-unit\.active:not\(\.fallen\)\{[\s\S]*?transform:none!important/);
-  assert.doesNotMatch(styles, /translateY\(14\.84%\)/);
-  assert.doesNotMatch(styles, /@keyframes kaelFlameBlade/);
-  assert.doesNotMatch(styles, /idle-element-fx/);
+  assert.match(styles, /\.field-unit\.form-2/);
+  assert.match(styles, /\.field-unit\.form-5/);
+  assert.match(styles, /unit-lyra\.form-5/);
+  assert.match(styles, /\.battle-face-portrait/);
+  assert.match(styles, /\.battle-face-portrait\{background:transparent!important/);
+  assert.match(styles, /\.story-unit\.story-speaker-sprite/);
+  assert.doesNotMatch(styles, /idle-element-motion/);
+});
+
+test("restores Lyra as both Android and installable app artwork", async () => {
+  const androidIcon = await readFile(new URL("../android/app/src/main/res/drawable-nodpi/app_icon.png", import.meta.url));
+  const pwaIcon = await readFile(new URL("../public/icons/icon-512.png", import.meta.url));
+  const manifest = await readFile(new URL("../android/app/src/main/AndroidManifest.xml", import.meta.url), "utf8");
+  assert.deepEqual(androidIcon, pwaIcon);
+  assert.match(manifest, /android:icon="@drawable\/app_icon"/);
+});
+
+test("cycles only locked 5-star idle sheets with a natural baked VFX loop", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const rebuildScript = await readFile(new URL("../scripts/rebuild-5star-idle-sheets.py", import.meta.url), "utf8");
+  const manifest = JSON.parse(await readFile(new URL("../public/sprites/units/idle-vfx-sources/5star-idle-manifest.json", import.meta.url), "utf8"));
+  const component = source.slice(
+    source.indexOf("function BattleUnitSprite"),
+    source.indexOf("function ResourceBar"),
+  );
+  const fixedIdleStyles = styles.slice(styles.indexOf("/* v57 idle stability fix:"));
+  assert.match(component, /stars === 5 \? spriteSet\.idle\[idleFrame\] \?\? spriteSet\.idle\[0\] : spriteSet\.idle\[0\]/);
+  assert.match(component, /\? "sprite-idle-anchor"/);
+  assert.match(component, /setInterval\(\(\) => \{/);
+  assert.match(component, /idleTiming\.milliseconds/);
+  assert.match(component, /idleTiming\.startFrame/);
+  assert.match(component, /stars !== 5/);
+  assert.match(component, /"locked-5star"/);
+  assert.match(component, /data-idle-phase-count/);
+  assert.match(component, /data-idle-frame-ms/);
+  assert.doesNotMatch(component, /setTimeout/);
+  assert.match(source, /kael: \{ milliseconds: 360, startFrame: 0 \}/);
+  assert.match(source, /brannock: \{ milliseconds: 540, startFrame: 4 \}/);
+  assert.match(fixedIdleStyles, /sprite-idle\[data-idle-anchor="locked-5star"\]\{/);
+  assert.match(fixedIdleStyles, /animation:none!important/);
+  assert.match(rebuildScript, /assert_body_anchors/);
+  assert.match(rebuildScript, /BODY_SCALE_Y = \(1\.0, 0\.997, 0\.993, 0\.988, 0\.993, 0\.997\)/);
+  assert.match(rebuildScript, /restrained -> rising -> near-peak -> peak -> receding -> settling/);
+  assert.equal(manifest.idleFrameCount, 6);
+  assert.equal(manifest.bodyAnchorPolicy, "fixed horizontal body centre and foot line across all six combined frames");
+  assert.equal(manifest.elementAnchorPolicy, "fixed per-unit VFX centre and ground line; no independent runtime layer");
+  assert.equal(manifest.loop, "restrained -> rising -> near-peak -> peak -> receding -> settling -> restrained");
+
+  for (const unit of ["kael", "lyra", "brannock", "zephyra", "solenne", "nyx"]) {
+    for (const stars of [2, 3, 4, 5]) {
+      await stat(new URL(`../public/sprites/units/${unit}-evolution/frames/${stars}/idle-1.webp`, import.meta.url));
+    }
+    const record = manifest.units.find((entry) => entry.unit === unit);
+    await stat(new URL(`../public/sprites/units/${unit}-evolution/frames/5/idle-5.webp`, import.meta.url));
+    await stat(new URL(`../public/sprites/units/${unit}-evolution/frames/5/idle-6.webp`, import.meta.url));
+    assert.deepEqual(record.phaseOrder, ["restrained", "rising", "near-peak", "peak", "receding", "settling"]);
+    assert.ok(record.vfxAlphaWeights[0] < record.vfxAlphaWeights[1]);
+    assert.ok(record.vfxAlphaWeights[1] < record.vfxAlphaWeights[2]);
+    assert.ok(record.vfxAlphaWeights[2] < record.vfxAlphaWeights[3]);
+    assert.ok(record.vfxAlphaWeights[3] > record.vfxAlphaWeights[4]);
+    assert.ok(record.vfxAlphaWeights[4] > record.vfxAlphaWeights[5]);
+    assert.ok(record.vfxAlphaWeights[5] > record.vfxAlphaWeights[0]);
+    assert.equal(new Set(record.bodyFrameBounds.map((bounds) => bounds[3])).size, 1, `${unit} foot line must stay locked`);
+    assert.equal(new Set(record.bodyFrameBounds.map((bounds) => bounds[0] + bounds[2])).size, 1, `${unit} body centre must stay locked`);
+    await stat(new URL(`../public/sprites/units/${unit}-evolution/sheets/${unit}-5-idle-sheet.png`, import.meta.url));
+    await stat(new URL(`../public/sprites/units/${unit}-evolution/sheets/${unit}-5-master-sheet.png`, import.meta.url));
+    await stat(new URL(`../public/sprites/units/idle-vfx-sources/${unit}-5-idle-body.png`, import.meta.url));
+    await stat(new URL(`../public/sprites/units/idle-vfx-sources/${unit}-5-idle-vfx-6phase-alpha.png`, import.meta.url));
+  }
 });
 
 test("embeds authored Remotion Burst timelines and moving battle stages", async () => {
@@ -197,7 +248,7 @@ test("anchors every elemental impact to the weapon and remounts grounded enemy s
   }
   assert.match(choreography, /getWeaponContactPoint/);
   assert.match(choreography, /BATTLE_CONTACT_GAP_X = 22/);
-  assert.match(choreography, /BATTLE_CONTACT_DROP_Y = 14/);
+  assert.match(choreography, /BATTLE_CONTACT_DROP_Y = 20/);
   assert.match(choreography, /getEnemyStaggerProfile/);
   assert.match(effects, /weaponContact\.angle/);
   assert.match(source, /className="enemy-stagger-rig"/);
@@ -220,75 +271,42 @@ test("keeps menu music continuous and ships swipeable persisted settings", async
   assert.match(source, /engine\.active\?\.key === musicTrackKey/);
   assert.match(source, /gates-of-azura-settings-v1/);
   assert.match(source, /onPointerMove=\{moveHomeSwipe\}/);
-  assert.match(source, /className="home-destination-track"/);
+  assert.match(source, /className="home-destination-track[^"\n]*"/);
   assert.match(source, /musicVolume/);
   assert.match(source, /sfxVolume/);
   assert.match(styles, /\.settings-panel/);
   assert.match(styles, /\.home-destination-track/);
 });
 
-test("gives every melee unit its own authored normal chain, cadence and contact effect", async () => {
+test("gives every unit tiered chains, cadence, sprites and type-correct combat", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-  // All six units are authored now, not just the two ranged ones.
   for (const unit of ["kael", "lyra", "brannock", "zephyra", "solenne", "nyx"]) {
-    assert.match(source, new RegExp(`${unit}: \\[`), `${unit} needs an authored normal chain`);
-    assert.match(source, new RegExp(`${unit}: \\{ tick: \\d+, phrase: \\d+ \\}`), `${unit} needs an authored cadence`);
+    assert.match(source, new RegExp(`${unit}: \\{`), `${unit} needs tier profiles`);
   }
-
-  // Cadence must actually differentiate the units. Brannock is the heaviest
-  // phrase in the game and Nyx the fastest; if these ever collapse to the same
-  // number every unit reads as the same character again.
+  assert.match(source, /const tierHits: Record<BattleUnitId, Record<StarTier, number>>/);
+  assert.match(source, /const hitCount = tierHits\[unit\.id\]\[stars\]/);
+  assert.match(source, /function getNormalCadence\(unitId: BattleUnitId, stars: StarTier\)/);
   assert.match(source, /brannock: \{ tick: 96, phrase: 190 \}/);
   assert.match(source, /nyx: \{ tick: 14, phrase: 76 \}/);
-
-  // Each melee unit owns a wind-up rather than snapping onto the contact frame.
-  assert.match(source, /const KAEL_LUNGE_SEQUENCE = \[/);
-  assert.match(source, /const LYRA_STEP_SEQUENCE = \[/);
-  assert.match(source, /const BRANNOCK_HEAVE_SEQUENCE = \[/);
-  assert.match(source, /const NYX_BLINK_SEQUENCE = \[/);
-  assert.match(source, /kael: KAEL_LUNGE_SEQUENCE/);
-  assert.match(source, /brannock: BRANNOCK_HEAVE_SEQUENCE/);
-
-  // The wind-up must resolve onto the beat's real contact frame, or damage
-  // lands on a drawing the player never sees.
-  assert.match(source, /castSequence\[castSequence\.length - 1\]\?\.frame !== attackFrame/);
-
-  // Ranged units stay at range; melee units are tagged for the travel CSS.
   assert.match(source, /const RANGED_NORMAL_UNITS = new Set<BattleUnitId>\(\["zephyra", "solenne"\]\)/);
   assert.match(source, /RANGED_NORMAL_UNITS\.has\(unit\.id\) \? "ranged-normal" : "melee-normal"/);
-
+  assert.match(source, /supportBurst = burst && !combatProfile\.burstDoesDamage/);
+  assert.match(source, /const damage = burst && !combatProfile\.burstDoesDamage\s*\? 0/);
   assert.match(styles, /\.field-unit\.melee-normal\.active:not\(\.bursting\)\.attack-stage-windup \.battle-unit-sprite/);
-  assert.match(styles, /@keyframes kaelEmberArc/);
-  assert.match(styles, /@keyframes lyraTideRibbon/);
-  assert.match(styles, /@keyframes brannockDustRing/);
-  assert.match(styles, /@keyframes nyxBlinkTrail/);
+  assert.match(styles, /@keyframes zephyraDetachedArrow/);
+  assert.match(styles, /@keyframes solenneBeamRain/);
 });
 
 test("normalises authored chain totals so choreography does not grant free damage", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 
   assert.match(source, /const NORMALISE_AUTHORED_CHAINS = true;/);
-  assert.match(source, /if \(authoredChain\) return normaliseChain\(unit\.id, authoredChain\);/);
-
-  // Every authored chain must normalise to the same total as the generic even
-  // split, otherwise a unit gains raw damage purely by being authored. This
-  // parses the real chains out of the source rather than trusting a comment.
-  const block = source.slice(
-    source.indexOf("const NORMAL_ATTACK_CHAINS"),
-    source.indexOf("const NORMALISE_AUTHORED_CHAINS"),
-  );
-  const chains = [...block.matchAll(/(\w+): \[([\s\S]*?)\],\n/g)];
-  assert.equal(chains.length, 6, "expected all six units to be authored");
-
-  for (const [, unit, body] of chains) {
-    const multipliers = [...body.matchAll(/multiplier: ([\d.]+)/g)].map((m) => Number(m[1]));
-    assert.ok(multipliers.length > 0, `${unit} has no beats`);
-    const total = multipliers.reduce((sum, value) => sum + value, 0);
-    const normalised = multipliers.map((value) => value / total).reduce((sum, value) => sum + value, 0);
-    assert.ok(Math.abs(normalised - 1) < 1e-9, `${unit} must normalise to 1, got ${normalised}`);
-  }
+  assert.match(source, /const total = chain\.reduce\(\(sum, beat\) => sum \+ beat\.multiplier, 0\);/);
+  assert.match(source, /multiplier: beat\.multiplier \/ total/);
+  assert.match(source, /return normaliseChain\(`\$\{unit\.id\}-\$\{stars\}`, chain\);/);
+  assert.match(source, /return normaliseChain\(`lyra-\$\{stars\}`, LYRA_NORMAL_ATTACK_CHAINS\[stars\]\);/);
 });
 
 test("restores a working impact camera and escalating hit feedback", async () => {
@@ -307,7 +325,7 @@ test("restores a working impact camera and escalating hit feedback", async () =>
   assert.match(styles, /\.battlefield\.no-screen-shake\.impact-beat-0/);
 
   // The camera must be driven by real hit weight, not a constant.
-  assert.match(source, /setImpactPower\(Number\(hitPower\.toFixed\(2\)\)\)/);
+  assert.match(source, /setImpactPower\(Number\(\(supportBurst \? 0\.35 : hitPower\)\.toFixed\(2\)\)\)/);
   assert.match(source, /"--impact-power": impactPower/);
   assert.match(styles, /--shake-x:calc\(var\(--impact-power,1\) \* [\d.]+px\)/);
 

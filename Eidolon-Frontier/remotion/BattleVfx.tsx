@@ -16,6 +16,7 @@ export type BattleStageId = "field" | "emberwood" | "causeway" | "citadel" | "re
 
 type BurstVfxProps = {
   unitId: BurstUnitId;
+  stars?: 2 | 3 | 4 | 5;
   hitCount: number;
   targetLeft?: number;
   targetBottom?: number;
@@ -27,6 +28,7 @@ type BurstVfxProps = {
 
 type AttackImpactProps = {
   unitId: BurstUnitId;
+  stars?: 2 | 3 | 4 | 5;
   targetLeft?: number;
   targetBottom?: number;
   hitIndex?: number;
@@ -40,6 +42,7 @@ type KaelFireBurstIntroProps = {
   keyArtSrc: string;
   /** Defaults to kael so the original Kael-only composition is unchanged. */
   unitId?: BurstUnitId;
+  stars?: 2 | 3 | 4 | 5;
 };
 
 type StageMotionProps = {
@@ -255,7 +258,7 @@ function RpgSpriteStrip({
  * the Remotion frame, the battlefield remains visible beneath the dim, and the
  * flames rise once instead of looping independently in CSS.
  */
-export function KaelFireBurstIntro({ burstName, keyArtSrc, unitId = "kael" }: KaelFireBurstIntroProps) {
+export function KaelFireBurstIntro({ burstName, keyArtSrc, unitId = "kael", stars = 5 }: KaelFireBurstIntroProps) {
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
   const p = BURST_INTRO_STYLE[unitId] ?? BURST_INTRO_STYLE.kael;
@@ -390,7 +393,7 @@ export function KaelFireBurstIntro({ burstName, keyArtSrc, unitId = "kael" }: Ka
           }}
         >
           <div style={{ color: `${p.bright}`, fontFamily: "Cinzel, Georgia, serif", fontSize: 13, fontWeight: 900, letterSpacing: "0.2em" }}>
-            {p.label}
+            {stars}★ · {p.label}
           </div>
           <div style={{ marginTop: 8, color: "#ffffff", fontFamily: "Cinzel, Georgia, serif", fontSize: 39, fontWeight: 900, fontStyle: "italic", letterSpacing: "0.02em", lineHeight: 0.92 }}>
             {burstName}
@@ -1127,15 +1130,17 @@ function BurstFinisherFlourish({
   );
 }
 
-export function BurstVfxComposition({ unitId, hitCount, targetLeft = 95, targetBottom = 120, reducedEffects = false }: BurstVfxProps) {
+export function BurstVfxComposition({ unitId, stars = 5, hitCount, targetLeft = 95, targetBottom = 120, reducedEffects = false }: BurstVfxProps) {
   const frame = useCurrentFrame();
   const { durationInFrames, width, height } = useVideoConfig();
   const style = BURST_STYLE[unitId];
   const preset = RPG_BURST_PRESETS[unitId];
-  const targetX = Math.min(width * 0.58, Math.max(42, targetLeft + 41));
-  const targetY = Math.min(height - 46, Math.max(54, height - targetBottom - 46));
   const casterX = width * 0.77;
   const casterY = height * 0.55;
+  const supportBurst = unitId === "solenne";
+  const tierIntensity = stars === 2 ? 0.64 : stars === 3 ? 0.78 : stars === 4 ? 0.92 : 1.08;
+  const targetX = supportBurst ? casterX : Math.min(width * 0.58, Math.max(42, targetLeft + 41));
+  const targetY = supportBurst ? casterY : Math.min(height - 46, Math.max(54, height - targetBottom - 46));
   const impactFrame = frame - 12;
   const hitActive = impactFrame >= 0 && impactFrame < hitCount * 11;
   const hitIndex = hitActive ? Math.floor(impactFrame / 11) : Math.max(0, hitCount - 1);
@@ -1191,8 +1196,8 @@ export function BurstVfxComposition({ unitId, hitCount, targetLeft = 95, targetB
     extrapolateRight: "clamp",
     easing: Easing.bezier(0.7, 0, 0.84, 0),
   });
-  const impactX = Math.min(width - 24, Math.max(24, weaponContact.x + (hitIndex % 3 - 1) * 2));
-  const impactY = Math.min(height - 28, Math.max(34, weaponContact.y + (hitIndex % 2 ? -1 : 1)));
+  const impactX = supportBurst ? casterX : Math.min(width - 24, Math.max(24, weaponContact.x + (hitIndex % 3 - 1) * 2));
+  const impactY = supportBurst ? casterY : Math.min(height - 28, Math.max(34, weaponContact.y + (hitIndex % 2 ? -1 : 1)));
   const impactRotation = weaponContact.angle + (hitIndex % 3 - 1) * 7;
   const chargeBaseX = preset.chargeAnchor === "caster" ? casterX : targetX;
   const chargeBaseY = preset.chargeAnchor === "caster" ? casterY : targetY;
@@ -1245,7 +1250,7 @@ export function BurstVfxComposition({ unitId, hitCount, targetLeft = 95, targetB
           position: "absolute",
           inset: 0,
           background: `radial-gradient(circle at ${targetX}px ${targetY}px, ${style.secondary}3d 0 3%, ${style.primary}24 18%, transparent 52%), linear-gradient(90deg, ${style.deep}22, transparent 42%, ${style.primary}12)`,
-          opacity: entrance,
+          opacity: entrance * tierIntensity,
           mixBlendMode: "screen",
         }}
       />
@@ -1263,7 +1268,7 @@ export function BurstVfxComposition({ unitId, hitCount, targetLeft = 95, targetB
           translate: "0 -8px",
           borderRadius: "50%",
           background: `linear-gradient(90deg, ${style.secondary}00 0%, ${style.secondary}d8 12%, ${style.primary}f0 46%, ${style.secondary}cc 78%, ${style.secondary}00 100%)`,
-          opacity: launchOpacity,
+          opacity: supportBurst ? 0 : launchOpacity * tierIntensity,
           scale: `${launchProgress} ${0.4 + launchProgress * 0.6}`,
           filter: `blur(1.4px) drop-shadow(0 0 9px ${style.primary}) drop-shadow(0 0 18px ${style.secondary})`,
           mixBlendMode: "screen",
@@ -1283,7 +1288,7 @@ export function BurstVfxComposition({ unitId, hitCount, targetLeft = 95, targetB
           marginTop: -107,
           borderRadius: "50%",
           background: `radial-gradient(circle, ${style.secondary}f2 0 2%, ${style.primary}a8 9%, ${style.primary}3e 24%, transparent 64%)`,
-          opacity: hitEnvelope * (unitId === "solenne" ? 0.62 : 0.86) * Math.min(1.25, hitRamp * hitAccent),
+          opacity: hitEnvelope * (supportBurst ? 0.54 : 0.86) * Math.min(1.25, hitRamp * hitAccent) * tierIntensity,
           scale: interpolate(hitProgress, [0, 1], [0.35 * hitRamp, 1.46 * hitRamp * hitAccent], {
             extrapolateLeft: "clamp",
             extrapolateRight: "clamp",
@@ -1362,7 +1367,7 @@ export function BurstVfxComposition({ unitId, hitCount, targetLeft = 95, targetB
               borderRadius: style.impact === "earth" ? "18%" : style.impact === "lightning" ? 0 : "50%",
               clipPath: style.impact === "lightning" ? "polygon(35% 0,100% 0,60% 43%,92% 43%,18% 100%,38% 57%,0 57%)" : undefined,
               background: index % 3 === 0 ? style.secondary : style.primary,
-              opacity: Math.sin(local * Math.PI) * (0.5 + lane * 0.42),
+              opacity: Math.sin(local * Math.PI) * (0.5 + lane * 0.42) * tierIntensity,
               rotate: `${angle * 57.2958 + local * 110}deg`,
               boxShadow: `0 0 ${5 + lane * 8}px ${style.primary}`,
               mixBlendMode: "screen",
@@ -1421,6 +1426,7 @@ export function BurstVfxComposition({ unitId, hitCount, targetLeft = 95, targetB
  */
 export function AttackImpactComposition({
   unitId,
+  stars = 5,
   targetLeft = 95,
   targetBottom = 120,
   hitIndex = 1,
@@ -1452,6 +1458,7 @@ export function AttackImpactComposition({
   });
   const rotation = weaponContact.angle;
   const intensity = critical ? 1.2 : spark ? 1.1 : 1;
+  const tierIntensity = stars === 2 ? 0.7 : stars === 3 ? 0.82 : stars === 4 ? 0.94 : 1.08;
   const normalSparkCount = reducedEffects ? (spark ? 8 : 5) : spark ? 15 : 10;
 
   return (
@@ -1462,7 +1469,7 @@ export function AttackImpactComposition({
           position: "absolute",
           inset: 0,
           background: `radial-gradient(circle at ${targetX}px ${targetY}px, ${style.secondary}f2 0 1%, ${style.primary}9c 7%, ${style.primary}32 20%, transparent 46%)`,
-          opacity: envelope * 0.78 * intensity,
+          opacity: envelope * 0.78 * intensity * tierIntensity,
           transformOrigin: `${targetX}px ${targetY}px`,
           scale: interpolate(progress, [0, 1], [0.48, 1.38], {
             extrapolateLeft: "clamp",
@@ -1488,7 +1495,7 @@ export function AttackImpactComposition({
           borderRadius: "50%",
           background: `linear-gradient(90deg, ${style.secondary} 0%, ${style.primary}e8 13%, ${style.primary}6f 48%, ${style.primary}18 74%, transparent 100%)`,
           boxShadow: `0 0 9px ${style.primary}, 0 0 22px ${style.primary}8c`,
-          opacity: envelope,
+          opacity: envelope * tierIntensity,
           scale: `${interpolate(progress, [0, 0.38, 1], [0.18, 1, 1.2], {
             extrapolateLeft: "clamp",
             extrapolateRight: "clamp",
@@ -1507,7 +1514,7 @@ export function AttackImpactComposition({
         progress={impactProgress}
         left={targetX}
         top={targetY}
-        opacity={envelope * 0.42 * intensity}
+        opacity={envelope * 0.42 * intensity * tierIntensity}
         scale={critical ? 0.78 : 0.68}
         rotate={rotation - 8}
         flipX={hitIndex % 2 === 1}
@@ -1520,7 +1527,7 @@ export function AttackImpactComposition({
         progress={impactProgress}
         left={targetX}
         top={targetY}
-        opacity={envelope}
+        opacity={envelope * tierIntensity}
         scale={critical ? 0.66 : 0.56}
         rotate={rotation}
         flipX={hitIndex % 2 === 1}

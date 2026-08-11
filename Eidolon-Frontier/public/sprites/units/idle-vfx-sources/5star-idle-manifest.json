@@ -1,0 +1,459 @@
+{
+  "frameSize": 512,
+  "idleFrameCount": 6,
+  "bodyAnchorPolicy": "fixed horizontal body centre and foot line across all six combined frames",
+  "elementAnchorPolicy": "fixed per-unit VFX centre and ground line; no independent runtime layer",
+  "loop": "restrained -> rising -> near-peak -> peak -> receding -> settling -> restrained",
+  "units": [
+    {
+      "unit": "kael",
+      "bodySource": "public/sprites/units/idle-vfx-sources/kael-5-idle-body.png",
+      "bodySha256": "08add5b4ea2a82c6d2b2fdf84c87eb0798304b427e3bfa88a5dec35cfceddb23",
+      "bodyAnchorPolicy": "fixed horizontal centre and foot line; bottom-anchored 1.2% maximum knee compression",
+      "bodyFrameBounds": [
+        [
+          120,
+          120,
+          469,
+          416
+        ],
+        [
+          120,
+          121,
+          469,
+          416
+        ],
+        [
+          120,
+          122,
+          469,
+          416
+        ],
+        [
+          120,
+          124,
+          469,
+          416
+        ],
+        [
+          120,
+          122,
+          469,
+          416
+        ],
+        [
+          120,
+          121,
+          469,
+          416
+        ]
+      ],
+      "bodyScaleY": [
+        1.0,
+        0.997,
+        0.993,
+        0.988,
+        0.993,
+        0.997
+      ],
+      "vfxSource": "public/sprites/units/idle-vfx-sources/kael-5-idle-vfx-6phase-alpha.png",
+      "vfxAlphaWeights": [
+        3472856,
+        5195470,
+        8062121,
+        10202398,
+        5512024,
+        3711960
+      ],
+      "vfxAnchor": {
+        "centerX": 298,
+        "groundY": 438
+      },
+      "phaseOrder": [
+        "restrained",
+        "rising",
+        "near-peak",
+        "peak",
+        "receding",
+        "settling"
+      ],
+      "combinedIdleSheet": "public/sprites/units/kael-evolution/sheets/kael-5-idle-sheet.png",
+      "masterSheet": "public/sprites/units/kael-evolution/sheets/kael-5-master-sheet.png"
+    },
+    {
+      "unit": "lyra",
+      "bodySource": "public/sprites/units/idle-vfx-sources/lyra-5-idle-body.png",
+      "bodySha256": "6669e56367eabd6057cdec56f34d57d391682a8a247487d60af62c1ea95f7d92",
+      "bodyAnchorPolicy": "fixed horizontal centre and foot line; bottom-anchored 1.2% maximum knee compression",
+      "bodyFrameBounds": [
+        [
+          82,
+          143,
+          441,
+          424
+        ],
+        [
+          82,
+          144,
+          441,
+          424
+        ],
+        [
+          82,
+          145,
+          441,
+          424
+        ],
+        [
+          82,
+          146,
+          441,
+          424
+        ],
+        [
+          82,
+          145,
+          441,
+          424
+        ],
+        [
+          82,
+          144,
+          441,
+          424
+        ]
+      ],
+      "bodyScaleY": [
+        1.0,
+        0.997,
+        0.993,
+        0.988,
+        0.993,
+        0.997
+      ],
+      "vfxSource": "public/sprites/units/idle-vfx-sources/lyra-5-idle-vfx-6phase-alpha.png",
+      "vfxAlphaWeights": [
+        3948260,
+        6266328,
+        7369870,
+        11619167,
+        7301644,
+        4287376
+      ],
+      "vfxAnchor": {
+        "centerX": 238,
+        "groundY": 446
+      },
+      "phaseOrder": [
+        "restrained",
+        "rising",
+        "near-peak",
+        "peak",
+        "receding",
+        "settling"
+      ],
+      "combinedIdleSheet": "public/sprites/units/lyra-evolution/sheets/lyra-5-idle-sheet.png",
+      "masterSheet": "public/sprites/units/lyra-evolution/sheets/lyra-5-master-sheet.png"
+    },
+    {
+      "unit": "brannock",
+      "bodySource": "public/sprites/units/idle-vfx-sources/brannock-5-idle-body.png",
+      "bodySha256": "58dd6fa43e372181dff5edbc77ef17b7ee3a73871ecb39e7f04caa3ff4ace7e7",
+      "bodyAnchorPolicy": "fixed horizontal centre and foot line; bottom-anchored 1.2% maximum knee compression",
+      "bodyFrameBounds": [
+        [
+          175,
+          98,
+          455,
+          455
+        ],
+        [
+          175,
+          99,
+          455,
+          455
+        ],
+        [
+          175,
+          100,
+          455,
+          455
+        ],
+        [
+          175,
+          102,
+          455,
+          455
+        ],
+        [
+          175,
+          100,
+          455,
+          455
+        ],
+        [
+          175,
+          99,
+          455,
+          455
+        ]
+      ],
+      "bodyScaleY": [
+        1.0,
+        0.997,
+        0.993,
+        0.988,
+        0.993,
+        0.997
+      ],
+      "vfxSource": "public/sprites/units/idle-vfx-sources/brannock-5-idle-vfx-6phase-alpha.png",
+      "vfxAlphaWeights": [
+        2693169,
+        4649705,
+        6890234,
+        11335718,
+        5671251,
+        3275659
+      ],
+      "vfxAnchor": {
+        "centerX": 256,
+        "groundY": 475
+      },
+      "phaseOrder": [
+        "restrained",
+        "rising",
+        "near-peak",
+        "peak",
+        "receding",
+        "settling"
+      ],
+      "combinedIdleSheet": "public/sprites/units/brannock-evolution/sheets/brannock-5-idle-sheet.png",
+      "masterSheet": "public/sprites/units/brannock-evolution/sheets/brannock-5-master-sheet.png"
+    },
+    {
+      "unit": "zephyra",
+      "bodySource": "public/sprites/units/idle-vfx-sources/zephyra-5-idle-body.png",
+      "bodySha256": "eac9cde87d83c9326b6a4e1f84f36c510d3d16107563680374256ec1e66486b0",
+      "bodyAnchorPolicy": "fixed horizontal centre and foot line; bottom-anchored 1.2% maximum knee compression",
+      "bodyFrameBounds": [
+        [
+          149,
+          133,
+          392,
+          432
+        ],
+        [
+          149,
+          134,
+          392,
+          432
+        ],
+        [
+          149,
+          135,
+          392,
+          432
+        ],
+        [
+          149,
+          137,
+          392,
+          432
+        ],
+        [
+          149,
+          135,
+          392,
+          432
+        ],
+        [
+          149,
+          134,
+          392,
+          432
+        ]
+      ],
+      "bodyScaleY": [
+        1.0,
+        0.997,
+        0.993,
+        0.988,
+        0.993,
+        0.997
+      ],
+      "vfxSource": "public/sprites/units/idle-vfx-sources/zephyra-5-idle-vfx-6phase-alpha.png",
+      "vfxAlphaWeights": [
+        1922421,
+        2771969,
+        3725817,
+        5652622,
+        3374890,
+        2069994
+      ],
+      "vfxAnchor": {
+        "centerX": 302,
+        "groundY": 452
+      },
+      "phaseOrder": [
+        "restrained",
+        "rising",
+        "near-peak",
+        "peak",
+        "receding",
+        "settling"
+      ],
+      "combinedIdleSheet": "public/sprites/units/zephyra-evolution/sheets/zephyra-5-idle-sheet.png",
+      "masterSheet": "public/sprites/units/zephyra-evolution/sheets/zephyra-5-master-sheet.png"
+    },
+    {
+      "unit": "solenne",
+      "bodySource": "public/sprites/units/idle-vfx-sources/solenne-5-idle-body.png",
+      "bodySha256": "a492fcc4c8dd95140a0efb9e7f5ac62a5c9c300d94c0925500e71d7ce6010fc4",
+      "bodyAnchorPolicy": "fixed horizontal centre and foot line; bottom-anchored 1.2% maximum knee compression",
+      "bodyFrameBounds": [
+        [
+          138,
+          131,
+          394,
+          448
+        ],
+        [
+          138,
+          132,
+          394,
+          448
+        ],
+        [
+          138,
+          133,
+          394,
+          448
+        ],
+        [
+          138,
+          135,
+          394,
+          448
+        ],
+        [
+          138,
+          133,
+          394,
+          448
+        ],
+        [
+          138,
+          132,
+          394,
+          448
+        ]
+      ],
+      "bodyScaleY": [
+        1.0,
+        0.997,
+        0.993,
+        0.988,
+        0.993,
+        0.997
+      ],
+      "vfxSource": "public/sprites/units/idle-vfx-sources/solenne-5-idle-vfx-6phase-alpha.png",
+      "vfxAlphaWeights": [
+        652753,
+        996770,
+        1515554,
+        1920080,
+        1146967,
+        674445
+      ],
+      "vfxAnchor": {
+        "centerX": 278,
+        "groundY": 468
+      },
+      "phaseOrder": [
+        "restrained",
+        "rising",
+        "near-peak",
+        "peak",
+        "receding",
+        "settling"
+      ],
+      "combinedIdleSheet": "public/sprites/units/solenne-evolution/sheets/solenne-5-idle-sheet.png",
+      "masterSheet": "public/sprites/units/solenne-evolution/sheets/solenne-5-master-sheet.png"
+    },
+    {
+      "unit": "nyx",
+      "bodySource": "public/sprites/units/idle-vfx-sources/nyx-5-idle-body.png",
+      "bodySha256": "194efb40e9c30c74bfd4b4d3b92dbe9e0f6d5d6cd316322210a46f61c0aff4b7",
+      "bodyAnchorPolicy": "fixed horizontal centre and foot line; bottom-anchored 1.2% maximum knee compression",
+      "bodyFrameBounds": [
+        [
+          152,
+          84,
+          436,
+          445
+        ],
+        [
+          152,
+          85,
+          436,
+          445
+        ],
+        [
+          152,
+          87,
+          436,
+          445
+        ],
+        [
+          152,
+          88,
+          436,
+          445
+        ],
+        [
+          152,
+          87,
+          436,
+          445
+        ],
+        [
+          152,
+          85,
+          436,
+          445
+        ]
+      ],
+      "bodyScaleY": [
+        1.0,
+        0.997,
+        0.993,
+        0.988,
+        0.993,
+        0.997
+      ],
+      "vfxSource": "public/sprites/units/idle-vfx-sources/nyx-5-idle-vfx-6phase-alpha.png",
+      "vfxAlphaWeights": [
+        2422631,
+        3849321,
+        5635501,
+        7133361,
+        5352241,
+        3355241
+      ],
+      "vfxAnchor": {
+        "centerX": 222,
+        "groundY": 466
+      },
+      "phaseOrder": [
+        "restrained",
+        "rising",
+        "near-peak",
+        "peak",
+        "receding",
+        "settling"
+      ],
+      "combinedIdleSheet": "public/sprites/units/nyx-evolution/sheets/nyx-5-idle-sheet.png",
+      "masterSheet": "public/sprites/units/nyx-evolution/sheets/nyx-5-master-sheet.png"
+    }
+  ]
+}

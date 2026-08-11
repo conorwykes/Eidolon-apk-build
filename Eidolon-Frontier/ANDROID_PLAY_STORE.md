@@ -1,36 +1,44 @@
-# Gates of Azura — Android and Google Play handoff
+# Gates of Azura — Android / Google Play handoff (v57)
 
-The game is already configured as a portrait-first Progressive Web App:
+The repository now contains an **offline native Android wrapper** under `android/`.
 
-- standalone Android display mode and portrait orientation
-- 192 px and 512 px app icons, including a maskable icon
-- offline caching through a service worker
-- touch-sized controls and swipe-up Burst input
-- device-local save data with no account required
+The wrapper does not load the game from a website. GitHub Actions first builds a standalone Vite version of the existing React game, copies that bundle into the Android app assets, and then packages the whole game as an APK/AAB.
 
-## Recommended release format
+## Android configuration
 
-Package the production URL as a Trusted Web Activity (TWA). This creates a signed Android App Bundle while preserving the same game code and save behaviour used by the installable web app.
+- package/application ID: `game.gatesofazura.app`
+- debug application ID: `game.gatesofazura.app.debug`
+- version code: `56`
+- version name: `57.0`
+- minimum SDK: API 24
+- target/compile SDK: API 36
+- portrait orientation
+- Java 17 / Android Gradle Plugin 8.11.1 / Gradle 8.13
 
-Before packaging, choose a permanent Android package identifier such as `game.gatesofazura.app`. Changing it after release creates a different Play app.
+## Testing APK
 
-## Release sequence
+Use the `Build Android APK` GitHub Actions workflow. It creates a debug APK and uploads it as a workflow artifact. No signing secrets are needed for this testing build.
 
-1. Create the release app in the owner’s Google Play Console account.
-2. Generate and securely retain the release signing key.
-3. Use Bubblewrap or PWABuilder to import the production web manifest and create the Android project.
-4. Add the signing certificate’s SHA-256 fingerprint to `/.well-known/assetlinks.json` on the production site.
-5. Build a signed `.aab`, test it through Play’s internal-testing track, then promote the tested build.
-6. Complete the store listing, content rating, target audience, privacy-policy, and Data safety forms using the game’s actual release behaviour.
+## Play Store build
+
+The `Build Signed Android Release` workflow creates:
+
+- `app-release.apk`
+- `app-release.aab`
+
+It requires these GitHub Actions secrets:
+
+- `ANDROID_KEYSTORE_BASE64`
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+
+The signing key is intentionally not included in the repository. Keep it outside source control and back it up securely.
 
 ## Current data behaviour
 
-This prototype stores progress only in the player’s local browser/app storage. It does not currently include accounts, advertising, analytics, real-money purchases, or transmission of player data to a game backend. Reassess the privacy and Data safety answers before release if any of those systems are added.
+Progress is stored locally on the device. The current game source does not require a player account or remote game backend. Reassess privacy/Data safety declarations before a public release if analytics, advertising, purchases, accounts, cloud saves, or any player-data transmission are added later.
 
-## Items that require the owner
+## Owner-controlled release items
 
-- Google Play developer account and legal/business details
-- final package identifier and public developer name
-- release signing-key custody
-- store copy, screenshots, support email, and privacy-policy URL
-- approval of the final public release
+A public Play Store launch still requires the owner's Google Play developer account, legal/developer details, release-key custody, store listing, screenshots, support/privacy URLs, content-rating answers, and final release approval.

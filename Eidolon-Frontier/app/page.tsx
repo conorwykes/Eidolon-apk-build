@@ -42,7 +42,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   BATTLE_CONTACT_DROP_Y,
   BATTLE_CONTACT_GAP_X,
@@ -62,6 +62,8 @@ type Screen =
   | "inventory"
   | "modes"
   | "summon"
+  | "summon-chamber"
+  | "summon-reveal"
   | "town"
   | "battle"
   | "story"
@@ -70,7 +72,7 @@ type Screen =
   | "shop";
 type ElementKey = "fire" | "water" | "earth" | "thunder" | "light" | "dark";
 type Nature = "Valiant" | "Stalwart" | "Fierce" | "Mystic" | "Vital";
-type StarTier = 3 | 4 | 5;
+type StarTier = 2 | 3 | 4 | 5;
 type BattleMode = "story" | "rift" | "trial" | "tower" | "hunt" | "raid" | "vault";
 type CrystalKind = "burst" | "heart" | "gold" | "material";
 type AttackScope = "single" | "all";
@@ -105,6 +107,46 @@ type Unit = {
   glyph: string;
   cost: number;
   formTitles: Record<StarTier, string>;
+};
+
+type BattleSpriteSet = { idle: string[]; attack: string[]; burst: string[] };
+
+type UnitStarProfile = {
+  attackName: string;
+  burstName: string;
+  attackScope: AttackScope;
+  burstScope: AttackScope;
+  attackMultiplier: number;
+  burstMultiplier: number;
+  burstHits: number;
+  gaugeGain: number;
+  healRatio: number;
+  cleanse: boolean;
+  burstBuff: string;
+  burstDescription: string;
+  leader: string;
+  burstDoesDamage: boolean;
+  maxLevel: number;
+  statMultiplier: number;
+  statGrowth: Record<"hp" | "atk" | "def" | "rec", number>;
+  ascension: { seals: number; cores: number };
+};
+
+type UnitCombatProfile = {
+  attackName: string;
+  burstName: string;
+  attackScope: AttackScope;
+  burstScope: AttackScope;
+  attackMultiplier: number;
+  burstMultiplier: number;
+  burstHits: number;
+  gaugeGain: number;
+  healRatio: number;
+  cleanse: boolean;
+  burstBuff: string;
+  burstDescription: string;
+  leader: string;
+  burstDoesDamage: boolean;
 };
 
 type NormalAttackBeat = {
@@ -158,6 +200,7 @@ type SaveState = {
   maxEnergy: number;
   arenaOrbs: number;
   arenaRank: number;
+  lastArenaAt: number;
   owned: string[];
   party: string[];
   unitLevels: Record<string, number>;
@@ -314,6 +357,40 @@ type GameSettings = {
   reducedEffects: boolean;
 };
 
+type SfxKind = "tap" | "hit" | "spark" | "burst" | "crystal" | "warning" | "victory" | "evolve" | "guard" | "buy" | "equip" | "summon" | "denied";
+
+const SFX_FILES: Record<SfxKind, string> = {
+  tap: "/audio/sfx/ui-tap.wav",
+  hit: "/audio/sfx/hit.wav",
+  spark: "/audio/sfx/spark.wav",
+  burst: "/audio/sfx/burst.wav",
+  crystal: "/audio/sfx/crystal.wav",
+  warning: "/audio/sfx/warning.wav",
+  victory: "/audio/sfx/victory.wav",
+  evolve: "/audio/sfx/evolve.wav",
+  guard: "/audio/sfx/guard.wav",
+  buy: "/audio/sfx/buy.wav",
+  equip: "/audio/sfx/equip.wav",
+  summon: "/audio/sfx/summon.wav",
+  denied: "/audio/sfx/denied.wav",
+};
+
+const SFX_MIX: Record<SfxKind, number> = {
+  tap: 0.42,
+  hit: 0.6,
+  spark: 0.55,
+  burst: 0.5,
+  crystal: 0.55,
+  warning: 0.45,
+  victory: 0.6,
+  evolve: 0.55,
+  guard: 0.55,
+  buy: 0.5,
+  equip: 0.5,
+  summon: 0.55,
+  denied: 0.45,
+};
+
 const MUSIC_TRACKS: Record<MusicTrackKey, MusicTrack> = {
   "falling-apart": { title: "Falling Apart", src: "/audio/falling-apart.mp3", volume: 0.58, loopStart: 11.522, loopEnd: 72.96 },
   "title-theme": { title: "Title Theme", src: "/audio/title-theme.mp3", volume: 0.6, loopStart: 11.522, loopEnd: 72.96 },
@@ -337,6 +414,109 @@ const DEFAULT_GAME_SETTINGS: GameSettings = {
   damageNumbers: true,
   reducedEffects: false,
 };
+
+const ENERGY_REGEN_MS = 2 * 60 * 1000;
+const ARENA_REGEN_MS = 15 * 60 * 1000;
+const MAX_ARENA_ORBS = 5;
+// Placeholder hold while there's no summon animation to fill this beat yet -
+// swap this out for a real animation later. The bloom's CSS animation
+// duration is driven by this same constant so the white-out finishes right
+// as the timer fires.
+const GATE_HOLD_MS = 4500;
+const GATE_BLOOM_FADE_MS = 550;
+// The charge-up glow's colour previews the rarity about to be revealed.
+const GATE_BLOOM_COLORS: Record<number, { core: string; mid: string; edge: string }> = {
+  2: { core: "#ffffff", mid: "#e5edf2", edge: "#9aaab4" },
+  3: { core: "#eef7ff", mid: "#8fc7ff", edge: "#2f7dff" },
+  4: { core: "#f6ecff", mid: "#c79bff", edge: "#8a3dff" },
+  5: { core: "#ffefe9", mid: "#ff8f77", edge: "#b3161f" },
+};
+const GATE_BLOOM_DEFAULT = { core: "#ffffff", mid: "#fdfaff", edge: "#e6d9ff" };
+// The ambient corona around the OUTSIDE of the whole gate silhouette
+// (.chamber-gate's own pulsing drop-shadow, independent of the void/gems
+// inside it) fades to this same rarity colour too, so the entire portal -
+// not just its interior - reads as charging toward that colour. lo/hi are
+// the two ends of the existing breathe-in/breathe-out pulse.
+const GATE_GLOW_COLORS: Record<number, { lo: string; hi: string }> = {
+  2: { lo: "#dce8ee38", hi: "#f7fbff78" },
+  3: { lo: "#4f90ff44", hi: "#4f90ff8c" },
+  4: { lo: "#9a54ff44", hi: "#9a54ff8c" },
+  5: { lo: "#ff474744", hi: "#ff47478c" },
+};
+const GATE_GLOW_DEFAULT = { lo: "#7b6bff44", hi: "#7b6bff8c" };
+// The portal's own inner glow (.gate-void-glow) fades from its resting
+// purple to this same rarity colour over GATE_HOLD_MS, so the void itself
+// visibly shifts hue as it charges rather than just sitting behind a
+// colour that changes around it. Alpha suffixes match the resting values
+// (5c/30) so only the hue changes, not the overall glow strength.
+const GATE_VOID_COLORS: Record<number, { core: string; mid: string }> = {
+  2: { core: "#f7fbff5c", mid: "#8fa0aa30" },
+  3: { core: "#9ecbff5c", mid: "#2f6fd930" },
+  4: { core: "#caa8ff5c", mid: "#7443a930" },
+  5: { core: "#ff9d8f5c", mid: "#b3161f30" },
+};
+const GATE_VOID_DEFAULT = { core: "#caa8ff5c", mid: "#7443a930" };
+// gate-void-swirl.webp is a standalone sprite cut from the void's own nebula
+// + crystal-crown artwork (see v56-source-changes/README.md), painted over
+// the same baked texture in gate-structure.webp so it can carry its own
+// recolourable filter instead of fighting the structure image's fixed
+// pixels. All four filter lists share the same hue-rotate/saturate/
+// brightness function shape (just different parameters) so the browser can
+// interpolate between them smoothly rather than snapping.
+const GATE_VOID_SWIRL = { width: 44.24, height: 41.328 };
+const GATE_VOID_SWIRL_IDLE = "hue-rotate(0deg) saturate(1) brightness(1)";
+const GATE_VOID_SWIRL_FILTERS: Record<number, string> = {
+  2: "hue-rotate(0deg) saturate(0.12) brightness(1.6)",
+  3: "hue-rotate(-48deg) saturate(1.1) brightness(1)",
+  4: "hue-rotate(4deg) saturate(1.05) brightness(1)",
+  5: "hue-rotate(99deg) saturate(1.15) brightness(1.05)",
+};
+const GATE_VOID_SWIRL_FALLBACK = "hue-rotate(0deg) saturate(0.12) brightness(1.6)";
+// The 7 floating gem sprites (cut from the same source as the void's own
+// crystal crown - see GATE_FLOATERS below) sit around 250deg, close enough
+// to the void's own base hue that the same hue-rotate treatment reads
+// consistently. drop-shadow is folded into every entry (not just left in
+// the stylesheet) so the whole filter list transitions as one unit - a
+// transition can't blend an inline filter against a separate stylesheet
+// filter underneath it. The sprites themselves had their baked ambient
+// halo masked back to the crystal's own bright pixels (see
+// v56-source-changes/README.md), so a small 3px drop-shadow reads as a
+// tight glow instead of the colour bleeding out past the gem shape.
+const GATE_GEM_FILTER_IDLE = "hue-rotate(0deg) saturate(1) brightness(1) drop-shadow(0 0 3px #9b6bf7a0)";
+const GATE_GEM_FILTERS: Record<number, string> = {
+  2: "hue-rotate(0deg) saturate(0.12) brightness(1.6) drop-shadow(0 0 3px #ffffffa0)",
+  3: "hue-rotate(-37deg) saturate(1.1) brightness(1) drop-shadow(0 0 3px #6bb0f7a0)",
+  4: "hue-rotate(15deg) saturate(1.05) brightness(1) drop-shadow(0 0 3px #9b6bf7a0)",
+  5: "hue-rotate(108deg) saturate(1.15) brightness(1.05) drop-shadow(0 0 3px #ff5f5fa0)",
+};
+const GATE_GEM_FILTER_FALLBACK = "hue-rotate(0deg) saturate(0.12) brightness(1.6) drop-shadow(0 0 3px #ffffffa0)";
+// Layout for the gate artwork: the void's position within /summon/gate-structure.webp,
+// and the 7 free-floating gem sprites cut from the same source (see
+// v56-source-changes/README.md for how these were produced).
+const GATE_VOID = { left: 48.68, top: 40.36, width: 31.6, height: 29.52 };
+const GATE_FLOATERS = [
+  { name: "top", left: 40.98, top: 6.7, width: 4.19 },
+  { name: "upper-left", left: 22.91, top: 16.42, width: 5.92 },
+  { name: "upper-right", left: 77.14, top: 16.51, width: 6.01 },
+  { name: "mid-left", left: 16.62, top: 26.66, width: 4.28 },
+  { name: "mid-right", left: 83.47, top: 26.71, width: 4.46 },
+  { name: "lower-right", left: 88.02, top: 42.41, width: 4.64 },
+  { name: "lower-left", left: 12.16, top: 42.45, width: 4.46 },
+];
+
+function formatRegenTime(milliseconds: number) {
+  const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function regenRemaining(now: number, lastAt: number, period: number, current: number, max: number) {
+  if (current >= max) return 0;
+  const elapsed = Math.max(0, now - lastAt);
+  const remainder = elapsed % period;
+  return remainder === 0 && elapsed > 0 ? period : period - remainder;
+}
 
 const ELEMENTS: Record<
   ElementKey,
@@ -382,7 +562,7 @@ const UNITS: Unit[] = [
     },
     glyph: "K",
     cost: 22,
-    formTitles: { 3: "Ember Cadet", 4: "Cinder Knight", 5: "Ember Vanguard" },
+    formTitles: { 2: "Coalbrand Recruit", 3: "Ember Cadet", 4: "Cinder Knight", 5: "Ember Vanguard" },
   },
   {
     id: "lyra",
@@ -396,11 +576,11 @@ const UNITS: Unit[] = [
     atk: 1410,
     def: 1040,
     rec: 1250,
-    burstName: "Moonlit Current",
-    burstHits: 10,
+    burstName: "Sovereign Moonsea",
+    burstHits: 12,
     attackScope: "single",
-    burstScope: "single",
-    burst: "10-hit Tide attack, heals the squad, and cleanses one ailment.",
+    burstScope: "all",
+    burst: "12-hit sovereign Tide attack, heals the squad, cleanses ailments, and grants Tideward.",
     leader: "Flowing Grace — all allies gain 18% HP and recovery crystals heal more.",
     portrait: "/units/lyra.webp",
     keyArt: "/units/key-art/lyra.webp",
@@ -413,7 +593,7 @@ const UNITS: Unit[] = [
     },
     glyph: "L",
     cost: 21,
-    formTitles: { 3: "Tide Initiate", 4: "Moonwater Adept", 5: "Tide Dancer" },
+    formTitles: { 2: "Brookblade Novice", 3: "Tide Initiate", 4: "Moonwater Adept", 5: "Tide Dancer" },
   },
   {
     id: "brannock",
@@ -444,7 +624,7 @@ const UNITS: Unit[] = [
     },
     glyph: "B",
     cost: 23,
-    formTitles: { 3: "Grove Guard", 4: "Stonebark Warden", 5: "Verdant Bulwark" },
+    formTitles: { 2: "Sproutshield", 3: "Grove Guard", 4: "Stonebark Warden", 5: "Verdant Bulwark" },
   },
   {
     id: "zephyra",
@@ -475,7 +655,7 @@ const UNITS: Unit[] = [
     },
     glyph: "Z",
     cost: 22,
-    formTitles: { 3: "Storm Scout", 4: "Gale Pursuer", 5: "Skybolt Huntress" },
+    formTitles: { 2: "Breezebow Recruit", 3: "Galebow Scout", 4: "Tempest Ranger", 5: "Skybreak Huntress" },
   },
   {
     id: "solenne",
@@ -506,7 +686,7 @@ const UNITS: Unit[] = [
     },
     glyph: "S",
     cost: 21,
-    formTitles: { 3: "Dawn Acolyte", 4: "Sunveil Chorister", 5: "Dawn Cantor" },
+    formTitles: { 2: "Dawn Novice", 3: "Sunwell Acolyte", 4: "Radiant Canoness", 5: "Aurora Hierophant" },
   },
   {
     id: "nyx",
@@ -537,135 +717,200 @@ const UNITS: Unit[] = [
     },
     glyph: "N",
     cost: 24,
-    formTitles: { 3: "Veilblade", 4: "Nightfall Reaver", 5: "Veil Reaper" },
+    formTitles: { 2: "Shade Initiate", 3: "Umbral Reaper", 4: "Eclipse Harvester", 5: "Abyssal Sovereign" },
   },
 ];
 
-// These ranged chains keep their rapid damage packets grouped while still
-// allowing the authored character drawings to progress. Zephyra plays a full
-// bow draw before each three-number volley; Solenne plays a complete planted
-// staff invocation before each two-number beam. The multiplier is applied to
-// the unit's unsplit normal-attack damage.
-const NORMAL_ATTACK_CHAINS: Partial<Record<BattleUnitId, readonly NormalAttackBeat[]>> = {
-  zephyra: [
-    { frame: 5, multiplier: 1, pose: 0, tick: 0 },
-    { frame: 6, multiplier: 0.6, pose: 0, tick: 1 },
-    { frame: 7, multiplier: 0.6, pose: 0, tick: 2 },
-    { frame: 5, multiplier: 1, pose: 1, tick: 0 },
-    { frame: 6, multiplier: 0.6, pose: 1, tick: 1 },
-    { frame: 7, multiplier: 0.6, pose: 1, tick: 2 },
+const evolutionFrames = (unitId: BattleUnitId, stars: StarTier, animation: "idle" | "attack" | "burst") =>
+  Array.from(
+    { length: animation === "idle" && stars === 5 ? 6 : 4 },
+    (_, index) => `/sprites/units/${unitId}-evolution/frames/${stars}/${animation}-${index + 1}.webp`,
+  );
+
+const EVOLUTION_SPRITES = Object.fromEntries(UNITS.map((unit) => [
+  unit.id,
+  Object.fromEntries(([2, 3, 4, 5] as StarTier[]).map((stars) => [stars, {
+    idle: evolutionFrames(unit.id, stars, "idle"),
+    attack: evolutionFrames(unit.id, stars, "attack"),
+    burst: evolutionFrames(unit.id, stars, "burst"),
+  }])) as Record<StarTier, BattleSpriteSet>,
+])) as Record<BattleUnitId, Record<StarTier, BattleSpriteSet>>;
+
+const LYRA_STAR_PROFILES: Record<StarTier, UnitStarProfile> = {
+  2: {
+    attackName: "Crescent Drill",
+    burstName: "Silver Rehearsal",
+    attackScope: "single",
+    burstScope: "single",
+    attackMultiplier: 0.92,
+    burstMultiplier: 2.3,
+    burstHits: 4,
+    gaugeGain: 34,
+    healRatio: 0.06,
+    cleanse: false,
+    burstBuff: "",
+    burstDescription: "4-hit physical crescent burst and a light squad heal.",
+    leader: "First Measure — Tide allies gain 6% recovery.",
+    burstDoesDamage: true,
+    maxLevel: 25,
+    statMultiplier: 0.5,
+    statGrowth: { hp: 0.008, atk: 0.0075, def: 0.008, rec: 0.01 },
+    ascension: { seals: 1, cores: 4 },
+  },
+  3: {
+    attackName: "Rillstep Dance",
+    burstName: "Brookmoon Waltz",
+    attackScope: "single",
+    burstScope: "single",
+    attackMultiplier: 1.04,
+    burstMultiplier: 2.7,
+    burstHits: 6,
+    gaugeGain: 40,
+    healRatio: 0.1,
+    cleanse: false,
+    burstBuff: "REC UP",
+    burstDescription: "6-hit rill dance, heals the squad, and raises recovery.",
+    leader: "Learning Current — Tide allies gain 10% HP and recovery.",
+    burstDoesDamage: true,
+    maxLevel: 45,
+    statMultiplier: 0.69,
+    statGrowth: { hp: 0.009, atk: 0.0085, def: 0.0085, rec: 0.011 },
+    ascension: { seals: 2, cores: 7 },
+  },
+  4: {
+    attackName: "Moonwake Cross",
+    burstName: "Moonfall Cascade",
+    attackScope: "single",
+    burstScope: "all",
+    attackMultiplier: 1.13,
+    burstMultiplier: 3.05,
+    burstHits: 8,
+    gaugeGain: 46,
+    healRatio: 0.16,
+    cleanse: true,
+    burstBuff: "REC UP",
+    burstDescription: "8-hit all-foe cascade, heals the squad, and cleanses ailments.",
+    leader: "Moonwater Form — all allies gain 14% HP and 15% recovery.",
+    burstDoesDamage: true,
+    maxLevel: 65,
+    statMultiplier: 0.87,
+    statGrowth: { hp: 0.01, atk: 0.0095, def: 0.009, rec: 0.012 },
+    ascension: { seals: 5, cores: 12 },
+  },
+  5: {
+    attackName: "Tidal Displacement",
+    burstName: "Sovereign Moonsea",
+    attackScope: "single",
+    burstScope: "all",
+    attackMultiplier: 1.02,
+    burstMultiplier: 3.55,
+    burstHits: 12,
+    gaugeGain: 52,
+    healRatio: 0.24,
+    cleanse: true,
+    burstBuff: "TIDEWARD",
+    burstDescription: "12-hit all-foe moonsea, major squad healing, full cleanse, and Tideward.",
+    leader: "Sovereign Flow — all allies gain 22% HP; healing and Burst gain are increased.",
+    burstDoesDamage: true,
+    maxLevel: 90,
+    statMultiplier: 1.06,
+    statGrowth: { hp: 0.011, atk: 0.0105, def: 0.01, rec: 0.0135 },
+    ascension: { seals: 0, cores: 0 },
+  },
+};
+
+const OTHER_UNIT_STAR_PROFILES: Record<Exclude<BattleUnitId, "lyra">, Record<StarTier, UnitStarProfile>> = {
+  kael: {
+    2: { attackName: "Ember Hew", burstName: "Ember Oath", attackScope: "single", burstScope: "single", attackMultiplier: 0.96, burstMultiplier: 2.25, burstHits: 4, gaugeGain: 34, healRatio: 0, cleanse: false, burstBuff: "", burstDescription: "4-hit recruit flame art ending in a compact ember crest.", leader: "First Spark — Fire allies gain 7% ATK.", burstDoesDamage: true, maxLevel: 25, statMultiplier: 0.52, statGrowth: { hp: 0.0085, atk: 0.009, def: 0.0075, rec: 0.007 }, ascension: { seals: 1, cores: 4 } },
+    3: { attackName: "Cinder Rising", burstName: "Cinder Wheel", attackScope: "single", burstScope: "single", attackMultiplier: 1.06, burstMultiplier: 2.68, burstHits: 6, gaugeGain: 40, healRatio: 0, cleanse: false, burstBuff: "ATK UP", burstDescription: "6-hit rising flame chain that grants the squad ATK UP.", leader: "Cinder Discipline — Fire allies gain 11% ATK and DEF.", burstDoesDamage: true, maxLevel: 45, statMultiplier: 0.7, statGrowth: { hp: 0.009, atk: 0.0105, def: 0.008, rec: 0.007 }, ascension: { seals: 2, cores: 7 } },
+    4: { attackName: "Furnace Break", burstName: "Blazing Crucible", attackScope: "single", burstScope: "all", attackMultiplier: 1.16, burstMultiplier: 3.08, burstHits: 8, gaugeGain: 46, healRatio: 0, cleanse: false, burstBuff: "ATK UP", burstDescription: "8-hit all-foe furnace eruption that ignites and empowers the squad.", leader: "Crucible Heart — all allies gain 16% ATK; Fire damage rises further.", burstDoesDamage: true, maxLevel: 65, statMultiplier: 0.88, statGrowth: { hp: 0.0095, atk: 0.0115, def: 0.0085, rec: 0.0075 }, ascension: { seals: 5, cores: 12 } },
+    5: { attackName: "Phoenix Drive", burstName: "Sunforged Cataclysm", attackScope: "single", burstScope: "all", attackMultiplier: 1.08, burstMultiplier: 3.62, burstHits: 12, gaugeGain: 52, healRatio: 0, cleanse: false, burstBuff: "INFERNO", burstDescription: "12-hit phoenix cataclysm across all foes; grants Inferno to the squad.", leader: "Vanguard Flame — all allies gain 24% ATK and enhanced critical damage.", burstDoesDamage: true, maxLevel: 90, statMultiplier: 1.07, statGrowth: { hp: 0.01, atk: 0.013, def: 0.009, rec: 0.008 }, ascension: { seals: 0, cores: 0 } },
+  },
+  brannock: {
+    2: { attackName: "Rootknock", burstName: "Seedstone Ward", attackScope: "single", burstScope: "single", attackMultiplier: 0.92, burstMultiplier: 2.18, burstHits: 4, gaugeGain: 32, healRatio: 0, cleanse: false, burstBuff: "GUARD UP", burstDescription: "4-hit earthen ward art that grants Guard Up.", leader: "Young Rampart — all allies gain 7% DEF.", burstDoesDamage: true, maxLevel: 25, statMultiplier: 0.56, statGrowth: { hp: 0.0105, atk: 0.007, def: 0.011, rec: 0.007 }, ascension: { seals: 1, cores: 4 } },
+    3: { attackName: "Briar Quake", burstName: "Grove Rampart", attackScope: "single", burstScope: "single", attackMultiplier: 1.03, burstMultiplier: 2.58, burstHits: 6, gaugeGain: 38, healRatio: 0, cleanse: false, burstBuff: "GUARD UP", burstDescription: "6-hit rootline quake that raises the squad's guard.", leader: "Grove Formation — all allies gain 11% DEF and 7% max HP.", burstDoesDamage: true, maxLevel: 45, statMultiplier: 0.74, statGrowth: { hp: 0.011, atk: 0.0075, def: 0.012, rec: 0.0075 }, ascension: { seals: 2, cores: 7 } },
+    4: { attackName: "Faultroot Crusher", burstName: "Heartwood Bastion", attackScope: "single", burstScope: "all", attackMultiplier: 1.14, burstMultiplier: 2.98, burstHits: 8, gaugeGain: 43, healRatio: 0, cleanse: false, burstBuff: "BARKSKIN", burstDescription: "8-hit all-foe fault surge that wraps allies in Barkskin.", leader: "Stonebark Oath — all allies gain 17% DEF and 12% max HP.", burstDoesDamage: true, maxLevel: 65, statMultiplier: 0.9, statGrowth: { hp: 0.012, atk: 0.008, def: 0.013, rec: 0.008 }, ascension: { seals: 5, cores: 12 } },
+    5: { attackName: "Worldroot Rupture", burstName: "Elderwood Citadel", attackScope: "single", burstScope: "all", attackMultiplier: 1.04, burstMultiplier: 3.42, burstHits: 10, gaugeGain: 48, healRatio: 0, cleanse: false, burstBuff: "CITADEL", burstDescription: "10-hit worldroot rupture across all foes; raises the Elderwood Citadel.", leader: "Living Fortress — all allies gain 26% DEF and 20% max HP.", burstDoesDamage: true, maxLevel: 90, statMultiplier: 1.05, statGrowth: { hp: 0.0135, atk: 0.0085, def: 0.0145, rec: 0.0085 }, ascension: { seals: 0, cores: 0 } },
+  },
+  zephyra: {
+    2: { attackName: "Breeze Shot", burstName: "Four Winds Drill", attackScope: "single", burstScope: "single", attackMultiplier: 0.98, burstMultiplier: 2.22, burstHits: 4, gaugeGain: 36, healRatio: 0, cleanse: false, burstBuff: "", burstDescription: "4-hit ranged wind-arrow drill against one foe.", leader: "Scout's Eye — Thunder allies gain 7% critical rate.", burstDoesDamage: true, maxLevel: 25, statMultiplier: 0.48, statGrowth: { hp: 0.007, atk: 0.0105, def: 0.0065, rec: 0.008 }, ascension: { seals: 1, cores: 4 } },
+    3: { attackName: "Crosswind Volley", burstName: "Cyclone Quiver", attackScope: "single", burstScope: "single", attackMultiplier: 1.08, burstMultiplier: 2.7, burstHits: 7, gaugeGain: 42, healRatio: 0, cleanse: false, burstBuff: "HASTE", burstDescription: "7-hit ranged cyclone volley that grants Haste.", leader: "Galebow Tempo — Spark windows and Burst gain are moderately increased.", burstDoesDamage: true, maxLevel: 45, statMultiplier: 0.68, statGrowth: { hp: 0.0075, atk: 0.0115, def: 0.007, rec: 0.0085 }, ascension: { seals: 2, cores: 7 } },
+    4: { attackName: "Thunderhead Arc", burstName: "Stormwheel Barrage", attackScope: "single", burstScope: "all", attackMultiplier: 1.17, burstMultiplier: 3.12, burstHits: 10, gaugeGain: 48, healRatio: 0, cleanse: false, burstBuff: "HASTE", burstDescription: "10-hit ranged lightning barrage across all foes; grants Haste.", leader: "Tempest Pursuit — all allies gain 16% critical damage and faster Burst gain.", burstDoesDamage: true, maxLevel: 65, statMultiplier: 0.86, statGrowth: { hp: 0.008, atk: 0.0125, def: 0.0075, rec: 0.009 }, ascension: { seals: 5, cores: 12 } },
+    5: { attackName: "Horizon Piercer", burstName: "Heavenfall Constellation", attackScope: "single", burstScope: "all", attackMultiplier: 1.1, burstMultiplier: 3.66, burstHits: 14, gaugeGain: 56, healRatio: 0, cleanse: false, burstBuff: "SKYHUNT", burstDescription: "14-hit ranged storm constellation rains arrows on every foe.", leader: "Skybreak Hunt — all allies gain 24% critical damage and greatly increased Burst gain.", burstDoesDamage: true, maxLevel: 90, statMultiplier: 1.08, statGrowth: { hp: 0.0085, atk: 0.014, def: 0.008, rec: 0.0095 }, ascension: { seals: 0, cores: 0 } },
+  },
+  solenne: {
+    2: { attackName: "Dawn Ray", burstName: "First Blessing", attackScope: "single", burstScope: "all", attackMultiplier: 0.86, burstMultiplier: 0, burstHits: 4, gaugeGain: 38, healRatio: 0.14, cleanse: false, burstBuff: "REC UP", burstDescription: "A non-damaging blessing that heals all allies and raises recovery.", leader: "Kindled Dawn — all allies gain 7% recovery.", burstDoesDamage: false, maxLevel: 25, statMultiplier: 0.5, statGrowth: { hp: 0.008, atk: 0.0065, def: 0.008, rec: 0.011 }, ascension: { seals: 1, cores: 4 } },
+    3: { attackName: "Sunthread Beam", burstName: "Sunwell Grace", attackScope: "single", burstScope: "all", attackMultiplier: 0.96, burstMultiplier: 0, burstHits: 4, gaugeGain: 44, healRatio: 0.2, cleanse: false, burstBuff: "REGEN", burstDescription: "A non-damaging sunwell heal that grants regeneration to all allies.", leader: "Sunwell Song — all allies gain 11% HP and recovery.", burstDoesDamage: false, maxLevel: 45, statMultiplier: 0.7, statGrowth: { hp: 0.0085, atk: 0.007, def: 0.0085, rec: 0.012 }, ascension: { seals: 2, cores: 7 } },
+    4: { attackName: "Prism Lattice", burstName: "Sanctuary Chorus", attackScope: "single", burstScope: "all", attackMultiplier: 0.92, burstMultiplier: 0, burstHits: 4, gaugeGain: 50, healRatio: 0.27, cleanse: true, burstBuff: "BARRIER", burstDescription: "A non-damaging sanctuary heal, ailment cleanse, and protective Barrier.", leader: "Radiant Chorus — all allies gain 17% HP, recovery, and ailment resistance.", burstDoesDamage: false, maxLevel: 65, statMultiplier: 0.88, statGrowth: { hp: 0.009, atk: 0.0075, def: 0.009, rec: 0.0135 }, ascension: { seals: 5, cores: 12 } },
+    5: { attackName: "Aurora Lance", burstName: "Covenant of Dawn", attackScope: "single", burstScope: "all", attackMultiplier: 0.98, burstMultiplier: 0, burstHits: 4, gaugeGain: 58, healRatio: 0.36, cleanse: true, burstBuff: "RADIANT WARD", burstDescription: "A non-damaging major heal, full cleanse, regeneration, and Radiant Ward.", leader: "Everlasting Dawn — all allies gain 25% HP and greatly increased healing.", burstDoesDamage: false, maxLevel: 90, statMultiplier: 1.06, statGrowth: { hp: 0.01, atk: 0.008, def: 0.01, rec: 0.015 }, ascension: { seals: 0, cores: 0 } },
+  },
+  nyx: {
+    2: { attackName: "Dusk Reap", burstName: "Hollow Moon", attackScope: "single", burstScope: "single", attackMultiplier: 1, burstMultiplier: 2.32, burstHits: 4, gaugeGain: 35, healRatio: 0, cleanse: false, burstBuff: "", burstDescription: "4-hit shadow crescent focused on one foe.", leader: "Shade's Edge — Dark allies gain 8% ATK.", burstDoesDamage: true, maxLevel: 25, statMultiplier: 0.49, statGrowth: { hp: 0.0075, atk: 0.011, def: 0.0065, rec: 0.0075 }, ascension: { seals: 1, cores: 4 } },
+    3: { attackName: "Gloamstep Cut", burstName: "Eclipse Snare", attackScope: "single", burstScope: "single", attackMultiplier: 1.1, burstMultiplier: 2.78, burstHits: 6, gaugeGain: 41, healRatio: 0, cleanse: false, burstBuff: "VEIL", burstDescription: "6-hit blink reaping art that grants Veil.", leader: "Umbral Pursuit — Dark allies gain 12% ATK and critical damage.", burstDoesDamage: true, maxLevel: 45, statMultiplier: 0.69, statGrowth: { hp: 0.008, atk: 0.012, def: 0.007, rec: 0.008 }, ascension: { seals: 2, cores: 7 } },
+    4: { attackName: "Nightglass Sever", burstName: "Black Crescent Prison", attackScope: "single", burstScope: "single", attackMultiplier: 1.2, burstMultiplier: 3.2, burstHits: 9, gaugeGain: 47, healRatio: 0, cleanse: false, burstBuff: "VEIL", burstDescription: "9-hit eclipsing prison with a defence-breaking final cut.", leader: "Eclipse Law — all allies gain 17% critical damage; Dark attacks pierce defence.", burstDoesDamage: true, maxLevel: 65, statMultiplier: 0.87, statGrowth: { hp: 0.0085, atk: 0.013, def: 0.0075, rec: 0.0085 }, ascension: { seals: 5, cores: 12 } },
+    5: { attackName: "Eventide Execution", burstName: "Zero-Moon Dominion", attackScope: "single", burstScope: "all", attackMultiplier: 1.12, burstMultiplier: 3.72, burstHits: 12, gaugeGain: 54, healRatio: 0, cleanse: false, burstBuff: "ABYSS", burstDescription: "12-hit zero-moon dominion across all foes with a defence-piercing finisher.", leader: "Abyssal Crown — all allies gain 25% critical damage; final Burst hits pierce defence.", burstDoesDamage: true, maxLevel: 90, statMultiplier: 1.08, statGrowth: { hp: 0.009, atk: 0.0145, def: 0.008, rec: 0.009 }, ascension: { seals: 0, cores: 0 } },
+  },
+};
+
+const LYRA_NORMAL_ATTACK_CHAINS: Record<StarTier, readonly NormalAttackBeat[]> = {
+  2: [
+    { frame: 1, multiplier: 0.8, pose: 0, tick: 0 },
+    { frame: 2, multiplier: 1.3, pose: 1, tick: 0 },
+    { frame: 3, multiplier: 0.9, pose: 2, tick: 0 },
   ],
-  solenne: [
-    { frame: 4, multiplier: 0.8, pose: 0, tick: 0 },
-    { frame: 5, multiplier: 1.2, pose: 0, tick: 1 },
-    { frame: 4, multiplier: 0.8, pose: 1, tick: 0 },
-    { frame: 5, multiplier: 1.2, pose: 1, tick: 1 },
+  3: [
+    { frame: 0, multiplier: 0.7, pose: 0, tick: 0 },
+    { frame: 1, multiplier: 0.85, pose: 1, tick: 0 },
+    { frame: 2, multiplier: 1.05, pose: 2, tick: 0 },
+    { frame: 3, multiplier: 1.0, pose: 3, tick: 0 },
   ],
-  // Kael is a Breaker: two aggressive lunges, the second ending on a heavy
-  // committed downswing that carries most of the chain's weight.
-  kael: [
-    { frame: 0, multiplier: 0.9, pose: 0, tick: 0 },
-    { frame: 1, multiplier: 0.55, pose: 0, tick: 1 },
-    { frame: 2, multiplier: 0.55, pose: 0, tick: 2 },
-    { frame: 3, multiplier: 0.9, pose: 1, tick: 0 },
-    { frame: 4, multiplier: 1.5, pose: 1, tick: 1 },
+  4: [
+    { frame: 0, multiplier: 0.55, pose: 0, tick: 0 },
+    { frame: 1, multiplier: 0.75, pose: 1, tick: 0 },
+    { frame: 2, multiplier: 0.72, pose: 2, tick: 0 },
+    { frame: 2, multiplier: 0.72, pose: 2, tick: 1 },
+    { frame: 3, multiplier: 1.35, pose: 3, tick: 0 },
   ],
-  // Lyra fights in linked dance phrases: three light pairs, each opened by a
-  // turning step rather than a fresh run-in.
-  lyra: [
-    { frame: 0, multiplier: 0.75, pose: 0, tick: 0 },
-    { frame: 1, multiplier: 0.75, pose: 0, tick: 1 },
-    { frame: 2, multiplier: 0.8, pose: 1, tick: 0 },
-    { frame: 3, multiplier: 0.8, pose: 1, tick: 1 },
-    { frame: 4, multiplier: 0.85, pose: 2, tick: 0 },
-    { frame: 5, multiplier: 1.15, pose: 2, tick: 1 },
-  ],
-  // Brannock is deliberately slow and single-phrase: one long shouldered
-  // wind-up into a grounded three-beat crush.
-  brannock: [
-    { frame: 0, multiplier: 1.05, pose: 0, tick: 0 },
-    { frame: 1, multiplier: 1.25, pose: 0, tick: 1 },
-    { frame: 2, multiplier: 2.1, pose: 0, tick: 2 },
-  ],
-  // Nyx is the opposite extreme: three blink-flurries of three, accelerating
-  // into the final cut.
-  nyx: [
-    { frame: 0, multiplier: 0.5, pose: 0, tick: 0 },
-    { frame: 1, multiplier: 0.5, pose: 0, tick: 1 },
-    { frame: 2, multiplier: 0.55, pose: 0, tick: 2 },
-    { frame: 3, multiplier: 0.5, pose: 1, tick: 0 },
-    { frame: 4, multiplier: 0.5, pose: 1, tick: 1 },
-    { frame: 5, multiplier: 0.6, pose: 1, tick: 2 },
-    { frame: 6, multiplier: 0.55, pose: 2, tick: 0 },
-    { frame: 7, multiplier: 0.6, pose: 2, tick: 1 },
-    { frame: 8, multiplier: 1.1, pose: 2, tick: 2 },
+  5: [
+    { frame: 0, multiplier: 0.45, pose: 0, tick: 0 },
+    { frame: 1, multiplier: 0.5, pose: 1, tick: 0 },
+    { frame: 1, multiplier: 0.5, pose: 1, tick: 1 },
+    { frame: 2, multiplier: 0.58, pose: 2, tick: 0 },
+    { frame: 2, multiplier: 0.58, pose: 2, tick: 1 },
+    { frame: 2, multiplier: 0.62, pose: 2, tick: 2 },
+    { frame: 3, multiplier: 1.35, pose: 3, tick: 0 },
   ],
 };
 
-// Every authored chain above is written for readability of its internal
-// *shape* — which beat is light and which one lands heavy. Totals are then
-// normalised so no unit gains raw damage simply by having an authored chain.
-// Previously an authored chain multiplied the unit's whole normal attack once
-// per beat, which made Zephyra and Solenne roughly four times stronger than
-// any unit still on the generic even split. Set this to `false` to restore the
-// old un-normalised behaviour.
-const NORMALISE_AUTHORED_CHAINS = true;
+function getLyraProfile(stars: StarTier) {
+  return LYRA_STAR_PROFILES[stars];
+}
 
-const ZEPHYRA_VOLLEY_DRAW_SEQUENCE = [
-  { frame: 0, stage: "windup", hold: 64 },
-  { frame: 1, stage: "windup", hold: 72 },
-  { frame: 2, stage: "windup", hold: 78 },
-  { frame: 3, stage: "windup", hold: 92 },
-  { frame: 4, stage: "release", hold: 54 },
-  { frame: 5, stage: "flight", hold: 96 },
-] as const satisfies readonly { frame: number; stage: AttackStage; hold: number }[];
+function getUnitStarProfile(unitId: BattleUnitId, stars: StarTier): UnitStarProfile {
+  return unitId === "lyra" ? LYRA_STAR_PROFILES[stars] : OTHER_UNIT_STAR_PROFILES[unitId][stars];
+}
+
+function getBattleSpriteSet(unit: Unit, stars: StarTier): BattleSpriteSet {
+  return EVOLUTION_SPRITES[unit.id][stars];
+}
+
+function getUnitCombatProfile(unit: Unit, stars: StarTier): UnitCombatProfile {
+  return getUnitStarProfile(unit.id, stars);
+}
+
+// Each tier's authored chain is normalised so extra animation beats add visual
+// complexity without granting free damage.
+const NORMALISE_AUTHORED_CHAINS = true;
 
 const ZEPHYRA_RANGED_ADVANCE = 0;
 
-const SOLENNE_BEAM_CAST_SEQUENCE = [
-  { frame: 0, stage: "windup", hold: 72 },
-  { frame: 1, stage: "windup", hold: 82 },
-  { frame: 2, stage: "windup", hold: 88 },
-  { frame: 3, stage: "release", hold: 92 },
-  { frame: 4, stage: "flight", hold: 70 },
-  { frame: 5, stage: "impact", hold: 104 },
-] as const satisfies readonly { frame: number; stage: AttackStage; hold: number }[];
-
-// Melee phrases open with their own short authored wind-up instead of jumping
-// straight onto the contact drawing. Each sequence ends on the frame that
-// actually connects, so damage still resolves on the pose the player sees.
-const KAEL_LUNGE_SEQUENCE = [
-  { frame: 0, stage: "windup", hold: 26 },
-  { frame: 1, stage: "release", hold: 20 },
-] as const satisfies readonly { frame: number; stage: AttackStage; hold: number }[];
-
-const LYRA_STEP_SEQUENCE = [
-  { frame: 0, stage: "windup", hold: 22 },
-  { frame: 1, stage: "release", hold: 18 },
-] as const satisfies readonly { frame: number; stage: AttackStage; hold: number }[];
-
-// Brannock's whole identity is the commitment before the swing lands.
-const BRANNOCK_HEAVE_SEQUENCE = [
-  { frame: 0, stage: "windup", hold: 62 },
-  { frame: 0, stage: "windup", hold: 74 },
-  { frame: 1, stage: "release", hold: 34 },
-] as const satisfies readonly { frame: number; stage: AttackStage; hold: number }[];
-
-// Nyx barely winds up at all — the blink is the wind-up.
-const NYX_BLINK_SEQUENCE = [
-  { frame: 0, stage: "windup", hold: 14 },
-] as const satisfies readonly { frame: number; stage: AttackStage; hold: number }[];
-
-// One shared table so a new unit only needs its own sequence, not another
-// hand-written branch inside queueAttack.
-const NORMAL_CAST_SEQUENCES: Partial<Record<BattleUnitId, readonly { frame: number; stage: AttackStage; hold: number }[]>> = {
-  zephyra: ZEPHYRA_VOLLEY_DRAW_SEQUENCE,
-  solenne: SOLENNE_BEAM_CAST_SEQUENCE,
-  kael: KAEL_LUNGE_SEQUENCE,
-  lyra: LYRA_STEP_SEQUENCE,
-  brannock: BRANNOCK_HEAVE_SEQUENCE,
-  nyx: NYX_BLINK_SEQUENCE,
+const LYRA_STEP_SEQUENCES: Record<StarTier, readonly { frame: number; stage: AttackStage; hold: number }[]> = {
+  2: [{ frame: 0, stage: "windup", hold: 48 }, { frame: 1, stage: "release", hold: 30 }],
+  3: [{ frame: 0, stage: "windup", hold: 34 }, { frame: 1, stage: "release", hold: 24 }],
+  4: [{ frame: 0, stage: "windup", hold: 24 }, { frame: 1, stage: "release", hold: 18 }],
+  5: [{ frame: 0, stage: "windup", hold: 15 }, { frame: 1, stage: "release", hold: 11 }],
 };
+
 
 // Ranged units hold their ground; melee units still travel to contact.
 const RANGED_NORMAL_UNITS = new Set<BattleUnitId>(["zephyra", "solenne"]);
@@ -686,8 +931,29 @@ const NORMAL_CADENCE: Partial<Record<BattleUnitId, NormalCadence>> = {
   nyx: { tick: 14, phrase: 76 },
 };
 
-function getNormalCadence(unitId: BattleUnitId): NormalCadence {
-  return NORMAL_CADENCE[unitId] ?? DEFAULT_NORMAL_CADENCE;
+function getNormalCadence(unitId: BattleUnitId, stars: StarTier): NormalCadence {
+  if (unitId === "lyra") {
+    return stars === 2
+      ? { tick: 74, phrase: 156 }
+      : stars === 3
+        ? { tick: 46, phrase: 118 }
+        : stars === 4
+          ? { tick: 26, phrase: 88 }
+          : { tick: 14, phrase: 58 };
+  }
+  const base = NORMAL_CADENCE[unitId] ?? DEFAULT_NORMAL_CADENCE;
+  const pace = stars === 2 ? 1.24 : stars === 3 ? 1.08 : stars === 4 ? 0.94 : 0.8;
+  return { tick: Math.round(base.tick * pace), phrase: Math.round(base.phrase * pace) };
+}
+
+function getNormalCastSequence(unitId: BattleUnitId, stars: StarTier) {
+  if (unitId === "lyra") return LYRA_STEP_SEQUENCES[stars];
+  const hold = stars === 2 ? 72 : stars === 3 ? 58 : stars === 4 ? 46 : 36;
+  return [
+    { frame: 0, stage: "windup" as const, hold },
+    { frame: 1, stage: "windup" as const, hold },
+    { frame: 2, stage: "release" as const, hold: Math.max(24, hold - 12) },
+  ];
 }
 
 function showsZephyraProjectile(stage: AttackStage) {
@@ -704,28 +970,36 @@ function showsSolenneBeam(stage: AttackStage) {
 
 const normalisedChainCache = new Map<string, readonly NormalAttackBeat[]>();
 
-function normaliseChain(unitId: BattleUnitId, chain: readonly NormalAttackBeat[]): readonly NormalAttackBeat[] {
+function normaliseChain(cacheKey: string, chain: readonly NormalAttackBeat[]): readonly NormalAttackBeat[] {
   if (!NORMALISE_AUTHORED_CHAINS) return chain;
-  const cached = normalisedChainCache.get(unitId);
+  const cached = normalisedChainCache.get(cacheKey);
   if (cached) return cached;
   const total = chain.reduce((sum, beat) => sum + beat.multiplier, 0);
   const scaled = total > 0
     ? chain.map((beat) => ({ ...beat, multiplier: beat.multiplier / total }))
     : chain;
-  normalisedChainCache.set(unitId, scaled);
+  normalisedChainCache.set(cacheKey, scaled);
   return scaled;
 }
 
 function getNormalAttackChain(unit: Unit, stars: StarTier): readonly NormalAttackBeat[] {
-  const authoredChain = NORMAL_ATTACK_CHAINS[unit.id];
-  if (authoredChain) return normaliseChain(unit.id, authoredChain);
-  const hitCount = stars < 5 ? 4 : unit.sprites.attack.length;
-  return Array.from({ length: hitCount }, (_, frame) => ({
-    frame: Math.min(frame, unit.sprites.attack.length - 1),
-    multiplier: 1 / hitCount,
-    pose: frame,
-    tick: 0,
+  if (unit.id === "lyra") return normaliseChain(`lyra-${stars}`, LYRA_NORMAL_ATTACK_CHAINS[stars]);
+  const tierHits: Record<BattleUnitId, Record<StarTier, number>> = {
+    kael: { 2: 2, 3: 3, 4: 4, 5: 5 },
+    lyra: { 2: 3, 3: 4, 4: 5, 5: 7 },
+    brannock: { 2: 2, 3: 2, 4: 3, 5: 4 },
+    zephyra: { 2: 3, 3: 5, 4: 7, 5: 9 },
+    solenne: { 2: 2, 3: 3, 4: 4, 5: 5 },
+    nyx: { 2: 3, 3: 5, 4: 7, 5: 9 },
+  };
+  const hitCount = tierHits[unit.id][stars];
+  const chain = Array.from({ length: hitCount }, (_, index) => ({
+    frame: index === hitCount - 1 ? 3 : 2,
+    multiplier: index === hitCount - 1 ? 1.45 : 1,
+    pose: 0,
+    tick: index,
   }));
+  return normaliseChain(`${unit.id}-${stars}`, chain);
 }
 
 const ENEMIES: Record<string, Enemy> = {
@@ -976,6 +1250,7 @@ const defaultSave: SaveState = {
   maxEnergy: 24,
   arenaOrbs: 3,
   arenaRank: 118,
+  lastArenaAt: Date.now(),
   owned: ["kael", "lyra", "brannock", "zephyra", "solenne"],
   party: ["kael", "lyra", "brannock", "zephyra", "solenne"],
   unitLevels: { kael: 22, lyra: 20, brannock: 21, zephyra: 18, solenne: 18 },
@@ -1032,31 +1307,45 @@ function createWaveEnemies(quest: Quest, waveIndex: number): EnemyInstance[] {
 }
 
 function getFormPortrait(unit: Unit, stars: StarTier = 5) {
-  return stars === 5 ? unit.portrait : `/units/forms/${unit.id}-${stars}.webp`;
+  return `/units/rarity-art/${unit.id}-${stars}.webp`;
 }
 
-function getMaxLevel(stars: StarTier) {
-  return stars === 3 ? 40 : stars === 4 ? 60 : 80;
+function getBattleFacePortrait(unit: Unit, stars: StarTier) {
+  // The generated face cards have painted scenery baked into the pixels.
+  // Use the matching transparent evolution pose instead and crop it tightly
+  // in CSS so the battle deck shows only the current form's face.
+  return getBattleSpriteSet(unit, stars).idle[0];
 }
 
-function getFormMultiplier(stars: StarTier) {
-  return stars === 3 ? 0.72 : stars === 4 ? 0.86 : 1;
+function getMaxLevel(stars: StarTier, unitId?: BattleUnitId) {
+  return unitId ? getUnitStarProfile(unitId, stars).maxLevel : stars === 2 ? 25 : stars === 3 ? 45 : stars === 4 ? 65 : 90;
+}
+
+function getFormMultiplier(stars: StarTier, unitId?: BattleUnitId) {
+  return unitId ? getUnitStarProfile(unitId, stars).statMultiplier : stars === 2 ? 0.52 : stars === 3 ? 0.7 : stars === 4 ? 0.88 : 1.06;
 }
 
 function getFormStat(unit: Unit, stars: StarTier, level: number, stat: "hp" | "atk" | "def" | "rec") {
-  const growth = stat === "hp" ? 1 + level / 100 : stat === "atk" ? 1 + level / 110 : 1 + level / 120;
-  return Math.round(unit[stat] * getFormMultiplier(stars) * growth);
+  const growth = 1 + level * getUnitStarProfile(unit.id, stars).statGrowth[stat];
+  return Math.round(unit[stat] * getFormMultiplier(stars, unit.id) * growth);
 }
 
 function getSquadCost(ids: string[], stars: Record<string, StarTier>) {
   return ids.reduce((total, id) => total + Math.max(12, getUnit(id).cost - (5 - (stars[id] ?? 3)) * 4), 0);
 }
 
+// Mirrors HERO_FORMATION's own structure directly: the same two paired
+// left/right-ish columns (~88 / ~14) repeated across evenly-stepped bottom
+// tiers, with a single centred unit on the lowest tier for odd counts —
+// the same shape as the party's own formation, just compressed into the
+// 46-114 band (114 = Kael's own slot/field-slot-1, so no enemy stands
+// higher than the party; 46 = the top edge of the enemy name/type row,
+// .enemy-status-top, so no enemy drops below it).
 const ENEMY_FORMATIONS: Record<number, { left: number; bottom: number }[]> = {
-  2: [{ left: 28, bottom: 79 }, { left: 125, bottom: 132 }],
-  3: [{ left: 10, bottom: 71 }, { left: 91, bottom: 145 }, { left: 127, bottom: 51 }],
-  4: [{ left: 2, bottom: 69 }, { left: 69, bottom: 151 }, { left: 78, bottom: 45 }, { left: 145, bottom: 119 }],
-  5: [{ left: 0, bottom: 73 }, { left: 58, bottom: 156 }, { left: 66, bottom: 44 }, { left: 127, bottom: 136 }, { left: 145, bottom: 42 }],
+  2: [{ left: 88, bottom: 114 }, { left: 14, bottom: 46 }],
+  3: [{ left: 88, bottom: 114 }, { left: 50, bottom: 80 }, { left: 14, bottom: 46 }],
+  4: [{ left: 88, bottom: 114 }, { left: 14, bottom: 114 }, { left: 89.5, bottom: 46 }, { left: 14.5, bottom: 46 }],
+  5: [{ left: 88, bottom: 114 }, { left: 14, bottom: 114 }, { left: 89.5, bottom: 80 }, { left: 14.5, bottom: 80 }, { left: 51, bottom: 46 }],
 };
 
 const HERO_FORMATION = [
@@ -1064,11 +1353,11 @@ const HERO_FORMATION = [
   // 1/2 top row, 3/4 middle row, 5 bottom-left. Every slot is centred on one
   // of two exact column axes so differently sized unit canvases still line up.
   // The tighter vertical spacing keeps every foot line above the enemy HP rail.
-  { right: 88, bottom: 174, width: 78 },
-  { right: 14, bottom: 174, width: 64 },
-  { right: 89.5, bottom: 130, width: 75 },
-  { right: 14.5, bottom: 130, width: 63 },
-  { right: 96, bottom: 88, width: 62 },
+  { right: 88, bottom: 114, width: 78 },
+  { right: 14, bottom: 114, width: 64 },
+  { right: 89.5, bottom: 70, width: 75 },
+  { right: 14.5, bottom: 70, width: 63 },
+  { right: 96, bottom: 28, width: 62 },
 ];
 
 function getTopPriorityEnemy(enemies: EnemyInstance[]) {
@@ -1091,7 +1380,7 @@ function getContactOffset(enemyCount: number, enemyIndex: number, heroIndex: num
   const enemy = ENEMY_FORMATIONS[enemyCount]?.[enemyIndex] ?? ENEMY_FORMATIONS[2][0];
   const hero = HERO_FORMATION[heroIndex] ?? HERO_FORMATION[0];
   const heroCenter = battlefieldWidth - hero.right - hero.width / 2;
-  const contactCenter = enemy.left + 82 + hero.width * 0.4;
+  const contactCenter = enemy.left + 60 + hero.width * 0.4;
   return {
     x: Math.round(contactCenter - heroCenter),
     y: Math.round(hero.bottom - enemy.bottom),
@@ -1126,7 +1415,7 @@ function UnitPortrait({ unit, className = "", stars = 5 }: { unit: Unit; classNa
   const [failed, setFailed] = useState(false);
   const portrait = getFormPortrait(unit, stars);
   return (
-    <div className={`unit-portrait ${unit.element} form-${stars} ${className}`}>
+    <div className={`unit-portrait rarity-ui-art ${unit.element} form-${stars} ${className}`}>
       {portrait && !failed ? (
         <img src={portrait} alt={`${unit.name}, ${unit.formTitles[stars]}, ${stars} star form`} onError={() => setFailed(true)} draggable={false} />
       ) : (
@@ -1137,13 +1426,108 @@ function UnitPortrait({ unit, className = "", stars = 5 }: { unit: Unit; classNa
   );
 }
 
-function UnitKeyArt({ unit, className = "" }: { unit: Unit; className?: string }) {
+function BattleFacePortrait({ unit, stars }: { unit: Unit; stars: StarTier }) {
+  return (
+    <div className={`battle-face-portrait unit-${unit.id} ${unit.element} form-${stars}`}>
+      <img
+        src={getBattleFacePortrait(unit, stars)}
+        alt={`${unit.name}, ${stars} star battle portrait`}
+        draggable={false}
+      />
+    </div>
+  );
+}
+
+// Shared gate artwork: the stone-arch structure image with its 7 free-
+// floating gem sprites, plus a void-aligned slot (GATE_VOID) for whatever
+// idle glow / video sequence a given screen wants to layer over the void.
+function GateArt({
+  children,
+  voidClassName = "",
+  voidCore = GATE_VOID_DEFAULT.core,
+  voidMid = GATE_VOID_DEFAULT.mid,
+  voidFilter = GATE_VOID_SWIRL_IDLE,
+  voidFadeMs,
+  gemFilter = GATE_GEM_FILTER_IDLE,
+}: {
+  children?: ReactNode;
+  voidClassName?: string;
+  // The void's inner glow colour - defaults to its resting purple. Screens
+  // that want it to fade toward a rarity colour (the chamber, while
+  // charging) pass the target colour plus how long that fade should take;
+  // the underlying transition on --void-core/--void-mid then animates it,
+  // same idea as the bloom colour but transitioned instead of keyframed
+  // since this element is always mounted (never a fresh-mount fade-in).
+  voidCore?: string;
+  voidMid?: string;
+  // Recolours the void's own swirl artwork (gate-void-swirl.webp) via a
+  // hue-rotate/saturate/brightness filter - defaults to a no-op filter so
+  // the sprite reads exactly as its baked purple. Same voidFadeMs drives
+  // both this and the glow colour so they land in sync.
+  voidFilter?: string;
+  voidFadeMs?: number;
+  // Same idea, applied to all 7 floating gem sprites at once.
+  gemFilter?: string;
+}) {
+  return (
+    <>
+      <img className="gate-structure" src="/summon/gate-structure.webp" alt="The Aether Gate, a stone archway holding a swirling void" draggable={false} />
+      <img
+        className="gate-void-swirl"
+        src="/summon/gate-void-swirl.webp"
+        alt=""
+        draggable={false}
+        style={{
+          left: `${GATE_VOID.left}%`,
+          top: `${GATE_VOID.top}%`,
+          width: `${GATE_VOID_SWIRL.width}%`,
+          height: `${GATE_VOID_SWIRL.height}%`,
+          filter: voidFilter,
+          ...(voidFadeMs ? { transitionDuration: `${voidFadeMs}ms` } : {}),
+        } as CSSProperties}
+      />
+      {GATE_FLOATERS.map((gem) => (
+        <img
+          key={gem.name}
+          className={`gate-gem-float gate-gem-${gem.name}`}
+          src={`/summon/gate-gem-${gem.name}.webp`}
+          alt=""
+          draggable={false}
+          style={{
+            left: `${gem.left}%`,
+            top: `${gem.top}%`,
+            width: `${gem.width}%`,
+            filter: gemFilter,
+            ...(voidFadeMs ? { transitionDuration: `${voidFadeMs}ms` } : {}),
+          } as CSSProperties}
+        />
+      ))}
+      <div
+        className={`gate-void-fx ${voidClassName}`}
+        aria-hidden="true"
+        style={{ left: `${GATE_VOID.left}%`, top: `${GATE_VOID.top}%`, width: `${GATE_VOID.width}%`, height: `${GATE_VOID.height}%` } as CSSProperties}
+      >
+        <span
+          className="gate-void-glow"
+          style={{
+            "--void-core": voidCore,
+            "--void-mid": voidMid,
+            ...(voidFadeMs ? { transitionDuration: `${voidFadeMs}ms` } : {}),
+          } as CSSProperties}
+        />
+        {children}
+      </div>
+    </>
+  );
+}
+
+function UnitKeyArt({ unit, stars = 5, className = "" }: { unit: Unit; stars?: StarTier; className?: string }) {
   const [failed, setFailed] = useState(false);
   return (
-    <div className={`unit-key-art key-art-${unit.element} unit-${unit.id} ${className}`}>
+    <div className={`unit-key-art key-art-${unit.element} unit-${unit.id} form-${stars} ${className}`}>
       <img
-        src={failed ? unit.portrait : unit.keyArt}
-        alt={`${unit.name}, ${unit.title} character illustration`}
+        src={failed ? unit.keyArt : getFormPortrait(unit, stars)}
+        alt={`${unit.name}, ${unit.formTitles[stars]}, ${stars} star character illustration`}
         onError={() => setFailed(true)}
         draggable={false}
       />
@@ -1183,43 +1567,34 @@ function StableBattleFrame({ src, className }: { src: string; className: string 
    where this component used to be invoked). See app/globals.css for the
    corresponding removal of .burst-signature / .burst-animation-canvas. */
 
-const IDLE_CYCLE_MS = 1420;
-const IDLE_FRAME_B_START_MS = 568;
-const IDLE_FRAME_B_END_MS = 1022;
-const UNIT_IDLE_OFFSETS: Record<string, number> = {
-  kael: 150,
-  lyra: 670,
-  brannock: 1040,
-  zephyra: 1390,
-  solenne: 860,
-  nyx: 420,
+const FIVE_STAR_IDLE_TIMING: Record<BattleUnitId, { milliseconds: number; startFrame: number }> = {
+  kael: { milliseconds: 360, startFrame: 0 },
+  lyra: { milliseconds: 470, startFrame: 2 },
+  brannock: { milliseconds: 540, startFrame: 4 },
+  zephyra: { milliseconds: 390, startFrame: 1 },
+  solenne: { milliseconds: 505, startFrame: 3 },
+  nyx: { milliseconds: 435, startFrame: 5 },
 };
 
 function BattleUnitSprite({ unit, mode, attackFrame = 0, stars = 5 }: { unit: Unit; mode: "idle" | "attack" | "burst"; attackFrame?: number; stars?: StarTier }) {
-  const [idleFrame, setIdleFrame] = useState<"a" | "b">("a");
+  const spriteSet = useMemo(() => getBattleSpriteSet(unit, stars), [stars, unit]);
+  const idleTiming = FIVE_STAR_IDLE_TIMING[unit.id];
+  const [idleFrame, setIdleFrame] = useState(() => stars === 5 ? idleTiming.startFrame % spriteSet.idle.length : 0);
 
   useEffect(() => {
-    if (mode !== "idle" || stars < 5) return;
-    let timer = 0;
-    const offset = UNIT_IDLE_OFFSETS[unit.id] ?? 0;
-    const updateExclusiveIdleFrame = () => {
-      const phase = (performance.now() + offset) % IDLE_CYCLE_MS;
-      const nextFrame = phase >= IDLE_FRAME_B_START_MS && phase < IDLE_FRAME_B_END_MS ? "b" : "a";
-      setIdleFrame(nextFrame);
-      const untilBoundary = nextFrame === "b"
-        ? IDLE_FRAME_B_END_MS - phase
-        : phase < IDLE_FRAME_B_START_MS
-          ? IDLE_FRAME_B_START_MS - phase
-          : IDLE_CYCLE_MS - phase + IDLE_FRAME_B_START_MS;
-      timer = window.setTimeout(updateExclusiveIdleFrame, Math.max(16, untilBoundary + 1));
-    };
-    timer = window.setTimeout(updateExclusiveIdleFrame, 0);
-    return () => window.clearTimeout(timer);
-  }, [mode, stars, unit.id]);
+    if (mode !== "idle" || stars !== 5 || spriteSet.idle.length < 2) {
+      setIdleFrame(0);
+      return;
+    }
+    setIdleFrame(idleTiming.startFrame % spriteSet.idle.length);
+    const timer = window.setInterval(() => {
+      setIdleFrame((frame) => (frame + 1) % spriteSet.idle.length);
+    }, idleTiming.milliseconds);
+    return () => window.clearInterval(timer);
+  }, [idleTiming.milliseconds, idleTiming.startFrame, mode, spriteSet.idle.length, stars, unit.id]);
 
   useEffect(() => {
-    if (stars < 5) return;
-    const sources = [unit.sprites.idleA, unit.sprites.idleB, ...unit.sprites.attack, ...unit.sprites.burst];
+    const sources = [...spriteSet.idle, ...spriteSet.attack, ...spriteSet.burst];
     const frames = sources.map((source) => {
       const frame = new Image();
       frame.src = source;
@@ -1232,29 +1607,31 @@ function BattleUnitSprite({ unit, mode, attackFrame = 0, stars = 5 }: { unit: Un
         frame.onerror = null;
       });
     };
-  }, [stars, unit.id, unit.sprites.attack, unit.sprites.burst, unit.sprites.idleA, unit.sprites.idleB]);
+  }, [spriteSet.attack, spriteSet.burst, spriteSet.idle, stars, unit.id]);
 
-  const lowerForm = stars < 5;
-  const lowerSource = lowerForm ? getFormPortrait(unit, stars) : "";
-  const normalFrame = attackFrame % Math.max(1, unit.sprites.attack.length);
-  const burstFrame = attackFrame % Math.max(1, unit.sprites.burst.length);
-  const activeSource = lowerForm
-    ? lowerSource
-    : mode === "idle"
-      ? idleFrame === "a" ? unit.sprites.idleA : unit.sprites.idleB
+  const normalFrame = attackFrame % Math.max(1, spriteSet.attack.length);
+  const burstFrame = attackFrame % Math.max(1, spriteSet.burst.length);
+  const activeSource = mode === "idle"
+      // The rebuilt 5-star loop repeats one locked character layer and changes
+      // only the baked elemental phase. Earlier tiers retain one planted pose
+      // because their independently drawn frames do not share exact anchors.
+      ? stars === 5 ? spriteSet.idle[idleFrame] ?? spriteSet.idle[0] : spriteSet.idle[0]
       : mode === "attack"
-        ? unit.sprites.attack[normalFrame] ?? unit.sprites.idleA
-        : unit.sprites.burst[burstFrame] ?? unit.sprites.idleA;
+        ? spriteSet.attack[normalFrame] ?? spriteSet.idle[0]
+        : spriteSet.burst[burstFrame] ?? spriteSet.idle[0];
   const frameClass = mode === "idle"
-    ? `sprite-idle-${lowerForm ? "a" : idleFrame}`
+    ? "sprite-idle-anchor"
     : mode === "attack"
-      ? `sprite-attack-frame${lowerForm ? ` lower-hit-${attackFrame % 4 + 1}` : ""}`
+      ? "sprite-attack-frame"
       : "sprite-burst sprite-burst-frame";
   return (
     <div
-      className={`battle-unit-sprite single-frame-renderer ${lowerForm ? "lower-form-sprite " : ""}sprite-${mode}`}
+      className={`battle-unit-sprite single-frame-renderer evolution-sprite ${unit.id}-evolution-sprite ${unit.id}-tier-${stars} sprite-${mode}`}
       role="img"
-      aria-label={`${unit.name}${lowerForm ? ` ${stars} star` : ""} ${mode === "attack" ? `combo hit ${attackFrame + 1}` : mode} battle sprite facing the enemy`}
+      aria-label={`${unit.name} ${stars} star ${mode === "attack" ? `combo hit ${attackFrame + 1}` : mode} battle sprite facing the enemy`}
+      data-idle-anchor={mode === "idle" ? stars === 5 ? "locked-5star" : "fixed" : undefined}
+      data-idle-phase-count={mode === "idle" && stars === 5 ? spriteSet.idle.length : undefined}
+      data-idle-frame-ms={mode === "idle" && stars === 5 ? idleTiming.milliseconds : undefined}
     >
       <StableBattleFrame className={`sprite-frame active ${frameClass}`} src={activeSource} />
     </div>
@@ -1307,20 +1684,20 @@ function AppHeader({
 }
 
 function BottomNav({ screen, go, save }: { screen: Screen; go: (screen: Screen) => void; save: SaveState }) {
-  const tabs: { id: Screen; label: string; Icon: LucideIcon }[] = [
-    { id: "home", label: "Home", Icon: Home },
-    { id: "units", label: "Units", Icon: Users },
-    { id: "town", label: "Town", Icon: Castle },
-    { id: "shop", label: "Shop", Icon: ShoppingBag },
-    { id: "summon", label: "Summon", Icon: Sparkles },
-    { id: "arena", label: "Arena", Icon: Swords },
+  const tabs: { id: Screen; label: string; Icon: LucideIcon; art?: string }[] = [
+    { id: "home", label: "Home", Icon: Home, art: "/ui/icons/nav-home-house.png" },
+    { id: "units", label: "Units", Icon: Users, art: "/ui/icons/nav-units-swords.png" },
+    { id: "town", label: "Town", Icon: Castle, art: "/ui/icons/nav-town-house.png" },
+    { id: "shop", label: "Shop", Icon: ShoppingBag, art: "/ui/icons/nav-shop-chest.png" },
+    { id: "summon", label: "Summon", Icon: Sparkles, art: "/ui/icons/nav-summon-gate.png" },
+    { id: "arena", label: "Arena", Icon: Swords, art: "/ui/icons/nav-arena-coliseum.png" },
   ];
   return (
     <nav className="bottom-nav" aria-label="Main navigation">
-      {tabs.map(({ id, label, Icon }) => (
+      {tabs.map(({ id, label, Icon, art }) => (
         <button key={id} className={screen === id ? "active" : ""} onClick={() => go(id)}>
-          <span className="nav-icon-frame">
-            <Icon size={21} strokeWidth={2.1} />
+          <span className={`nav-icon-frame nav-icon-${id}`}>
+            {art ? <img src={art} alt="" /> : <Icon size={21} strokeWidth={2.1} />}
             {id === "summon" && save.gems >= 5 && <b className="nav-alert">!</b>}
             {id === "town" && save.lastTownGather !== todayKey() && <b className="nav-alert">1</b>}
           </span>
@@ -1336,6 +1713,8 @@ export default function GatesOfAzura() {
   const [homeBanner, setHomeBanner] = useState(0);
   const [save, setSave] = useState<SaveState>(defaultSave);
   const [hydrated, setHydrated] = useState(false);
+  const [titleGateOpen, setTitleGateOpen] = useState(true);
+  const [titleAssetsReady, setTitleAssetsReady] = useState(false);
   const [selectedUnitId, setSelectedUnitId] = useState("");
   const [selectedFormStars, setSelectedFormStars] = useState<StarTier>(5);
   const [unitFilter, setUnitFilter] = useState<ElementKey | "all">("all");
@@ -1343,6 +1722,9 @@ export default function GatesOfAzura() {
   const [soundOn, setSoundOn] = useState(true);
   const [gameSettings, setGameSettings] = useState<GameSettings>(DEFAULT_GAME_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [clockNow, setClockNow] = useState(() => Date.now());
+  const [squadEditSlot, setSquadEditSlot] = useState(0);
   const [audioReady, setAudioReady] = useState(false);
   const [battlefieldWidth, setBattlefieldWidth] = useState(430);
   const [storyQuestId, setStoryQuestId] = useState(1);
@@ -1350,6 +1732,8 @@ export default function GatesOfAzura() {
   const [battle, setBattle] = useState<BattleState | null>(null);
   const [victory, setVictory] = useState<{ won: boolean; reward: number } | null>(null);
   const [battleSpeed, setBattleSpeed] = useState<BattleSpeed>(1);
+  const battlefieldRef = useRef<HTMLDivElement | null>(null);
+  const [battlefieldSize, setBattlefieldSize] = useState({ width: 430, height: 355 });
   const [autoTurnActive, setAutoTurnActive] = useState(false);
   const [attackFxs, setAttackFxs] = useState<AttackFx[]>([]);
   const [damageFxs, setDamageFxs] = useState<DamageFx[]>([]);
@@ -1374,6 +1758,18 @@ export default function GatesOfAzura() {
     label: "",
   });
   const [summonResult, setSummonResult] = useState<SummonResult | null>(null);
+  const [pendingSummon, setPendingSummon] = useState<SummonResult | null>(null);
+  const [fadeBlack, setFadeBlack] = useState(false);
+  const fadeTimeout = useRef<number | null>(null);
+  const [gateCharging, setGateCharging] = useState(false);
+  const [gateBloom, setGateBloom] = useState<"off" | "growing" | "fading">("off");
+  const [gateBloomColor, setGateBloomColor] = useState(GATE_BLOOM_DEFAULT);
+  const [gateVoidColor, setGateVoidColor] = useState(GATE_VOID_DEFAULT);
+  const [gateVoidFilter, setGateVoidFilter] = useState(GATE_VOID_SWIRL_IDLE);
+  const [gateGemFilter, setGateGemFilter] = useState(GATE_GEM_FILTER_IDLE);
+  const [gateGlowColor, setGateGlowColor] = useState(GATE_GLOW_DEFAULT);
+  const gateHoldTimeout = useRef<number | null>(null);
+  const gateBloomTimeout = useRef<number | null>(null);
   const [selectedHelper, setSelectedHelper] = useState("Mira");
   const [modeTab, setModeTab] = useState<"events" | "trials">("events");
   const [inventoryTab, setInventoryTab] = useState<"relics" | "materials" | "items">("relics");
@@ -1392,7 +1788,12 @@ export default function GatesOfAzura() {
   const lastAttackAt = useRef(0);
   const combatLock = useRef(false);
   const menuMusic = useRef<MenuMusicEngine | null>(null);
-  const homeSwipe = useRef({ pointerId: -1, startX: 0, moved: false });
+  const sfxBuffers = useRef<Map<SfxKind, AudioBuffer>>(new Map());
+  const sfxLoading = useRef<Map<SfxKind, Promise<AudioBuffer | null>>>(new Map());
+  const gameBackgroundPaused = useRef(false);
+  const backgroundResumeWaiters = useRef(new Set<() => void>());
+  const homeSwipe = useRef({ pointerId: -1, startX: 0, startTime: 0, width: 320, moved: false });
+  const unitHold = useRef<{ timer: ReturnType<typeof setTimeout> | null; suppressClick: boolean }>({ timer: null, suppressClick: false });
   const activeBattleQuestId = battle?.questId ?? 0;
   const activeBattleQuest = activeBattleQuestId ? QUESTS.find((quest) => quest.id === activeBattleQuestId) : undefined;
   const musicTrackKey: MusicTrackKey = (() => {
@@ -1404,10 +1805,25 @@ export default function GatesOfAzura() {
     return "title-theme";
   })();
 
-  // Every combat layer uses the same shortened cadence. CSS travel, Remotion
-  // contact art, damage feedback and enemy recoil therefore stay on one clock.
-  const waitForBattle = (milliseconds: number) =>
-    new Promise<void>((resolve) => window.setTimeout(resolve, getBattleDuration(milliseconds, battleSpeed)));
+  // Every combat layer uses the same shortened cadence. When the page/app is
+  // backgrounded we deliberately stop advancing this clock, so a turn cannot
+  // finish while the player is in another tab or app.
+  const waitForForeground = () => new Promise<void>((resolve) => {
+    if (!gameBackgroundPaused.current) {
+      resolve();
+      return;
+    }
+    backgroundResumeWaiters.current.add(resolve);
+  });
+  const waitForBattle = async (milliseconds: number) => {
+    let remaining = getBattleDuration(milliseconds, battleSpeed);
+    while (remaining > 0) {
+      await waitForForeground();
+      const slice = Math.min(remaining, 50);
+      await new Promise<void>((resolve) => window.setTimeout(resolve, slice));
+      if (!gameBackgroundPaused.current) remaining -= slice;
+    }
+  };
 
   const updateBattleLive = (updater: (current: BattleState) => BattleState) => {
     const current = battleRef.current;
@@ -1482,8 +1898,68 @@ export default function GatesOfAzura() {
     setHydrated(true);
     const requestedScreen = new URLSearchParams(window.location.search).get("open");
     if (requestedScreen === "quests" || requestedScreen === "units") setScreen(requestedScreen);
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    // Registering the cache-first PWA service worker while actively developing lets a
+    // stale cached copy of the app shell render underneath live/HMR-updated content —
+    // it looks exactly like the page is duplicated. Only register it in production
+    // builds; a dev server has no business behind an offline cache anyway.
+    if (import.meta.env.PROD && window.location.hostname !== "appassets.androidplatform.net" && "serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
   }, []);
+
+  // Preload every hero's 5-star art before the title screen offers "start" —
+  // this is also the collage the title background is built from, so it must
+  // already be decoded before the player ever sees it.
+  useEffect(() => {
+    let cancelled = false;
+    const sources = UNITS.map((unit) => getFormPortrait(unit, 5) ?? unit.keyArt);
+    let settled = 0;
+    const settle = () => {
+      settled += 1;
+      if (settled >= sources.length && !cancelled) setTitleAssetsReady(true);
+    };
+    if (sources.length === 0) {
+      setTitleAssetsReady(true);
+    } else {
+      sources.forEach((src) => {
+        if (!src) { settle(); return; }
+        const image = new Image();
+        image.onload = settle;
+        image.onerror = settle;
+        image.src = src;
+      });
+    }
+    // Never let a slow connection or a missing file trap the player on the
+    // loading screen — fall through to the title after a short ceiling.
+    const ceiling = window.setTimeout(() => { if (!cancelled) setTitleAssetsReady(true); }, 6000);
+    return () => { cancelled = true; window.clearTimeout(ceiling); };
+  }, []);
+
+  // Enemy/unit positions, weapon contact points, and stagger math are all
+  // authored in pixels against a fixed 430x355 reference battlefield — that
+  // coordinate system is used consistently everywhere it appears, but the
+  // actual .battlefield box is fluid (min 100% width up to 430px, height can
+  // grow), so on real devices the reference frame didn't match the box it
+  // was drawn into and everything drifted between screen sizes. Rather than
+  // rederiving every position/contact-point formula as a percentage (risking
+  // misaligned hit VFX), the battlefield's live size is measured here and
+  // the whole 430x355 reference frame is scaled and centred to fit it as one
+  // block in the JSX below — every position inside stays exactly where it
+  // was authored relative to everything else, at any resolution.
+  useEffect(() => {
+    if (screen !== "battle") return;
+    const node = battlefieldRef.current;
+    if (!node) return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const nextWidth = Math.round(entry.contentRect.width);
+      const nextHeight = Math.round(entry.contentRect.height);
+      if (nextWidth > 0 && nextHeight > 0) {
+        setBattlefieldSize((current) => (current.width === nextWidth && current.height === nextHeight ? current : { width: nextWidth, height: nextHeight }));
+      }
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [screen]);
 
   useEffect(() => {
     battleRef.current = battle;
@@ -1513,6 +1989,43 @@ export default function GatesOfAzura() {
         void engine.context.close();
       }
       menuMusic.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const setBackgroundPaused = (paused: boolean) => {
+      gameBackgroundPaused.current = paused;
+      document.documentElement.classList.toggle("game-background-paused", paused);
+      const engine = menuMusic.current;
+      if (engine && engine.context.state !== "closed") {
+        if (paused) {
+          void engine.context.suspend();
+        } else {
+          void engine.context.resume().catch(() => undefined);
+        }
+      }
+      if (!paused && backgroundResumeWaiters.current.size) {
+        const waiters = [...backgroundResumeWaiters.current];
+        backgroundResumeWaiters.current.clear();
+        waiters.forEach((resume) => resume());
+      }
+    };
+    const syncVisibility = () => setBackgroundPaused(document.hidden);
+    const pauseForPageHide = () => setBackgroundPaused(true);
+    const resumeForPageShow = () => setBackgroundPaused(document.hidden);
+
+    syncVisibility();
+    document.addEventListener("visibilitychange", syncVisibility);
+    window.addEventListener("pagehide", pauseForPageHide);
+    window.addEventListener("pageshow", resumeForPageShow);
+    return () => {
+      document.removeEventListener("visibilitychange", syncVisibility);
+      window.removeEventListener("pagehide", pauseForPageHide);
+      window.removeEventListener("pageshow", resumeForPageShow);
+      document.documentElement.classList.remove("game-background-paused");
+      const waiters = [...backgroundResumeWaiters.current];
+      backgroundResumeWaiters.current.clear();
+      waiters.forEach((resume) => resume());
     };
   }, []);
 
@@ -1591,19 +2104,23 @@ export default function GatesOfAzura() {
 
   useEffect(() => {
     const refill = () => {
+      const now = Date.now();
+      setClockNow(now);
       setSave((current) => {
-        if (current.energy >= current.maxEnergy) return current;
-        const gained = Math.floor((Date.now() - current.lastEnergyAt) / 180000);
-        if (gained < 1) return current;
+        const energyGained = current.energy >= current.maxEnergy ? 0 : Math.floor((now - current.lastEnergyAt) / ENERGY_REGEN_MS);
+        const arenaGained = current.arenaOrbs >= MAX_ARENA_ORBS ? 0 : Math.floor((now - current.lastArenaAt) / ARENA_REGEN_MS);
+        if (energyGained < 1 && arenaGained < 1) return current;
         return {
           ...current,
-          energy: Math.min(current.maxEnergy, current.energy + gained),
-          lastEnergyAt: current.lastEnergyAt + gained * 180000,
+          energy: Math.min(current.maxEnergy, current.energy + Math.max(0, energyGained)),
+          lastEnergyAt: energyGained > 0 ? current.lastEnergyAt + energyGained * ENERGY_REGEN_MS : current.lastEnergyAt,
+          arenaOrbs: Math.min(MAX_ARENA_ORBS, current.arenaOrbs + Math.max(0, arenaGained)),
+          lastArenaAt: arenaGained > 0 ? current.lastArenaAt + arenaGained * ARENA_REGEN_MS : current.lastArenaAt,
         };
       });
     };
     refill();
-    const timer = window.setInterval(refill, 30000);
+    const timer = window.setInterval(refill, 1000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -1638,8 +2155,22 @@ export default function GatesOfAzura() {
 
   const go = (next: Screen) => {
     setVictory(null);
+    setMenuOpen(false);
     setScreen(next);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: "auto" });
+  };
+
+  // Fades the whole app to black, swaps the screen (and runs any state
+  // change that should land while nothing is visible), then fades back in.
+  const FADE_MS = 380;
+  const fadeToScreen = (next: Screen, onCommit?: () => void) => {
+    if (fadeTimeout.current !== null) window.clearTimeout(fadeTimeout.current);
+    setFadeBlack(true);
+    fadeTimeout.current = window.setTimeout(() => {
+      onCommit?.();
+      go(next);
+      fadeTimeout.current = window.setTimeout(() => setFadeBlack(false), 20);
+    }, FADE_MS);
   };
 
   const toggleSound = () => {
@@ -1655,7 +2186,29 @@ export default function GatesOfAzura() {
     setGameSettings((current) => ({ ...current, [key]: value }));
   };
 
-  const playSfx = (kind: "tap" | "hit" | "spark" | "burst" | "crystal" | "warning" | "victory" | "evolve") => {
+  const loadSfxBuffer = async (context: AudioContext, kind: SfxKind) => {
+    const cached = sfxBuffers.current.get(kind);
+    if (cached) return cached;
+    const pending = sfxLoading.current.get(kind);
+    if (pending) return pending;
+    const request = (async () => {
+      try {
+        const response = await fetch(SFX_FILES[kind]);
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = await context.decodeAudioData(arrayBuffer);
+        sfxBuffers.current.set(kind, buffer);
+        return buffer;
+      } catch {
+        return null;
+      } finally {
+        sfxLoading.current.delete(kind);
+      }
+    })();
+    sfxLoading.current.set(kind, request);
+    return request;
+  };
+
+  const playSfx = (kind: SfxKind) => {
     if (gameSettings.vibration && "vibrate" in navigator) {
       const vibration = {
         tap: 0,
@@ -1666,33 +2219,26 @@ export default function GatesOfAzura() {
         warning: [20, 35, 20],
         victory: [12, 25, 18],
         evolve: [10, 18, 28],
+        guard: 10,
+        buy: 6,
+        equip: 6,
+        summon: 16,
+        denied: [8, 8],
       }[kind];
       if (vibration) navigator.vibrate(vibration);
     }
     const context = menuMusic.current?.context;
     if (!soundOn || !context || gameSettings.sfxVolume <= 0) return;
-    const gain = context.createGain();
-    const oscillator = context.createOscillator();
-    const now = context.currentTime;
-    const sfxProfile = {
-      tap: [420, 610, 0.05, 0.035, "sine"],
-      hit: [150, 78, 0.09, 0.065, "square"],
-      spark: [720, 1180, 0.16, 0.05, "triangle"],
-      burst: [95, 520, 0.52, 0.075, "sawtooth"],
-      crystal: [980, 1480, 0.13, 0.035, "sine"],
-      warning: [92, 70, 0.42, 0.055, "square"],
-      victory: [392, 784, 0.7, 0.05, "triangle"],
-      evolve: [240, 960, 0.8, 0.055, "sine"],
-    }[kind] as [number, number, number, number, OscillatorType];
-    oscillator.type = sfxProfile[4];
-    oscillator.frequency.setValueAtTime(sfxProfile[0], now);
-    oscillator.frequency.exponentialRampToValueAtTime(sfxProfile[1], now + sfxProfile[2]);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, sfxProfile[3] * gameSettings.sfxVolume / 100), now + 0.012);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + sfxProfile[2]);
-    oscillator.connect(gain).connect(context.destination);
-    oscillator.start(now);
-    oscillator.stop(now + sfxProfile[2] + 0.02);
+    void (async () => {
+      const buffer = await loadSfxBuffer(context, kind);
+      if (!buffer) return;
+      const source = context.createBufferSource();
+      const gain = context.createGain();
+      source.buffer = buffer;
+      gain.gain.value = Math.max(0, Math.min(1, (gameSettings.sfxVolume / 100) * SFX_MIX[kind]));
+      source.connect(gain).connect(context.destination);
+      source.start();
+    })();
   };
 
   const claimDaily = () => {
@@ -1731,7 +2277,7 @@ export default function GatesOfAzura() {
       return;
     }
     const openingEnemies = createWaveEnemies(quest, 0);
-    setSave((current) => ({ ...current, energy: current.energy - quest.energy, lastEnergyAt: Date.now() }));
+    setSave((current) => ({ ...current, energy: current.energy - quest.energy, lastEnergyAt: current.energy >= current.maxEnergy ? Date.now() : current.lastEnergyAt }));
     setBattle({
       questId: quest.id,
       wave: 0,
@@ -1870,6 +2416,9 @@ export default function GatesOfAzura() {
 
     combatLock.current = true;
     const unit = getUnit(unitId);
+    const stars = save.unitStars[unitId] ?? 3;
+    const combatProfile = getUnitCombatProfile(unit, stars);
+    const battleSprites = getBattleSpriteSet(unit, stars);
     const enemy = getEnemy(target.enemyId);
     const burst = wantsBurst && actor.gauge >= 100;
     const now = Date.now();
@@ -1877,21 +2426,25 @@ export default function GatesOfAzura() {
     lastAttackAt.current = now;
     const advantage = ELEMENTS[unit.element].strong === enemy.element ? 1.45 : ELEMENTS[enemy.element].strong === unit.element ? 0.78 : 1;
     const level = save.unitLevels[unit.id] ?? 1;
-    const base = unit.atk * (0.55 + level / 100);
-    const damage = Math.round(base * (burst ? 2.7 : 1) * advantage * (1 + (combo - 1) * 0.08));
-    const normalHits = unit.sprites.attack.length;
-    const hits = burst ? Math.min(18, normalHits * 2) : normalHits;
+    const base = getFormStat(unit, stars, level, "atk");
+    const damage = burst && !combatProfile.burstDoesDamage ? 0 : Math.round(base * (burst ? combatProfile.burstMultiplier : combatProfile.attackMultiplier) * advantage * (1 + (combo - 1) * 0.08));
+    const normalHits = battleSprites.attack.length;
+    const hits = burst ? combatProfile.burstHits : normalHits;
     let updatedParty = battle.party.map((member) =>
       member.id === unitId
-        ? { ...member, acted: true, guarding: false, gauge: burst ? 0 : Math.min(100, member.gauge + 34 + Math.min(8, hits)) }
+        ? { ...member, acted: true, guarding: false, gauge: burst ? 0 : Math.min(100, member.gauge + combatProfile.gaugeGain) }
         : member,
     );
-    if (burst && (unit.id === "lyra" || unit.id === "solenne")) {
-      const healRatio = unit.id === "solenne" ? 0.3 : 0.2;
-      updatedParty = updatedParty.map((member) => ({ ...member, hp: Math.min(getUnit(member.id).hp, member.hp + Math.round(getUnit(member.id).hp * healRatio)) }));
+    if (burst && combatProfile.healRatio > 0) {
+      updatedParty = updatedParty.map((member) => {
+        const memberUnit = getUnit(member.id);
+        const memberStars = save.unitStars[member.id] ?? 3;
+        const maxHp = getFormStat(memberUnit, memberStars, save.unitLevels[member.id] ?? 1, "hp");
+        return { ...member, hp: Math.min(maxHp, member.hp + Math.round(maxHp * combatProfile.healRatio)), ailment: combatProfile.cleanse ? "" : member.ailment };
+      });
     }
     const hitMessage = burst
-      ? `${unit.burstName}! Aether Burst`
+      ? `${combatProfile.burstName}! Aether Burst`
       : `${unit.name} closes on ${enemy.name}${advantage > 1 ? " — elemental advantage!" : ""}`;
     const animationSteps = burst ? Math.min(6, Math.max(4, Math.ceil(hits / 3))) : hits;
     const baseStepDamage = Math.floor(damage / animationSteps);
@@ -1910,7 +2463,7 @@ export default function GatesOfAzura() {
       hitFrame: 0,
       spark: combo > 1,
       weakness: advantage > 1,
-      label: burst ? unit.burstName : "",
+      label: burst ? combatProfile.burstName : combatProfile.attackName,
     });
 
     if (burst) await waitForBattle(340);
@@ -1927,7 +2480,7 @@ export default function GatesOfAzura() {
         targetEnemyId: target.instanceId,
         party: updatedParty,
         combo,
-        message: burst ? `${unit.burstName} tears through ${enemy.name}!` : `${unit.name} strikes ${enemy.name}.`,
+        message: burst ? combatProfile.burstDoesDamage ? `${combatProfile.burstName} tears through ${enemy.name}!` : `${combatProfile.burstName} restores the squad!` : `${unit.name} uses ${combatProfile.attackName}.`,
       });
       setCombatFx({
         phase: burst ? "burst" : "attacking",
@@ -1941,7 +2494,7 @@ export default function GatesOfAzura() {
         hitFrame: step,
         spark: combo > 1,
         weakness: advantage > 1,
-        label: burst ? unit.burstName : "",
+        label: burst ? combatProfile.burstName : combatProfile.attackName,
       });
       await waitForBattle(burst ? 115 : 145);
     }
@@ -2180,15 +2733,17 @@ export default function GatesOfAzura() {
     const quest = QUESTS.find((item) => item.id === opening.questId)!;
     const unit = getUnit(unitId);
     const stars = save.unitStars[unitId] ?? 3;
+    const combatProfile = getUnitCombatProfile(unit, stars);
+    const battleSprites = getBattleSpriteSet(unit, stars);
     const burst = wantsBurst && actor.gauge >= 100;
-    const attackScope = burst ? unit.burstScope : unit.attackScope;
+    const attackScope = burst ? combatProfile.burstScope : combatProfile.attackScope;
     const openingTargets = getBattleTargets(opening, attackScope);
     const firstTarget = openingTargets[0];
     if (!firstTarget) return;
     const lockedTargetIds = openingTargets.map((target) => target.instanceId);
     const normalAttackChain = getNormalAttackChain(unit, stars);
-    const rapidNormalChain = !burst && Boolean(NORMAL_ATTACK_CHAINS[unit.id]);
-    const hits = burst ? (stars < 5 ? 6 : unit.burstHits) : normalAttackChain.length;
+    const rapidNormalChain = !burst;
+    const hits = burst ? combatProfile.burstHits : normalAttackChain.length;
     const animationSteps = hits;
     const attackId = `${unitId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const heroIndex = Math.max(0, opening.party.findIndex((member) => member.id === unitId));
@@ -2199,7 +2754,7 @@ export default function GatesOfAzura() {
       ...state,
       party: state.party.map((member) => member.id === unitId ? { ...member, acted: true, guarding: false, gauge: burst ? 0 : member.gauge } : member),
       message: burst
-        ? `${unit.burstName}!${attackScope === "all" ? " All enemies caught in range." : state.targetEnemyId ? " Focus locked." : " Upper-foe priority."}`
+        ? `${combatProfile.burstName}!${combatProfile.burstDoesDamage ? attackScope === "all" ? " All enemies caught in range." : state.targetEnemyId ? " Focus locked." : " Upper-foe priority." : " Restorative light spreads across the squad."}`
         : unit.id === "solenne"
           ? `${unit.name} invokes judgement above ${state.targetEnemyId ? "the focused target" : "the upper-priority target"}.`
           : unit.id === "zephyra"
@@ -2216,7 +2771,7 @@ export default function GatesOfAzura() {
       frame: burst || unit.id === "zephyra" || unit.id === "solenne" ? 0 : normalAttackChain[0]?.frame ?? 0,
       volley: 0,
       hits,
-      label: burst ? unit.burstName : "",
+      label: burst ? combatProfile.burstName : combatProfile.attackName,
       contactX: contactAnchor.x,
       contactY: contactAnchor.y,
     }]);
@@ -2232,7 +2787,7 @@ export default function GatesOfAzura() {
     }
 
     const attackPower = getFormStat(unit, stars, save.unitLevels[unitId] ?? 1, "atk");
-    const totalBase = attackPower * (burst ? 3.25 + (save.burstLevels[unitId] ?? 1) * 0.08 : 1.18);
+    const totalBase = attackPower * (burst ? combatProfile.burstMultiplier + (save.burstLevels[unitId] ?? 1) * 0.08 : combatProfile.attackMultiplier);
     for (const step of Array.from({ length: animationSteps }, (_, index) => index)) {
       const state = battleRef.current;
       if (!state) break;
@@ -2248,12 +2803,14 @@ export default function GatesOfAzura() {
       const nextNormalBeat = step < animationSteps - 1 ? normalAttackChain[Math.min(step + 1, normalAttackChain.length - 1)] : null;
       const startsNormalPose = !burst && (!previousNormalBeat || previousNormalBeat.pose !== normalBeat.pose);
       const endsNormalPose = !burst && (!nextNormalBeat || nextNormalBeat.pose !== normalBeat.pose);
-      const attackFrame = burst ? Math.min(step, unit.sprites.burst.length - 1) : normalBeat.frame;
+      const attackFrame = burst
+        ? Math.min(battleSprites.burst.length - 1, Math.floor(step * battleSprites.burst.length / animationSteps))
+        : normalBeat.frame;
       // Every authored unit now opens each damage packet with its own drawn
       // wind-up. Zephyra plays a full bow draw, Solenne a planted invocation,
       // and the melee units their own lunge, turning step, shouldered heave or
       // blink. One table drives all of them.
-      const castSequence = !burst && startsNormalPose ? NORMAL_CAST_SEQUENCES[unit.id] : undefined;
+      const castSequence = !burst && startsNormalPose ? getNormalCastSequence(unit.id, stars) : undefined;
       if (castSequence) {
         for (const drawing of castSequence) {
           setAttackFxs((current) => current.map((fx) => fx.id === attackId ? {
@@ -2282,17 +2839,18 @@ export default function GatesOfAzura() {
         setAttackFxs((current) => current.map((fx) => fx.id === attackId ? {
           ...fx,
           frame: attackFrame,
-          volley: normalBeat.pose,
+          volley: burst ? step : normalBeat.pose,
           targetEnemyId: visualTargetId,
           stage: startsNormalPose || burst ? "windup" : "impact",
         } : fx));
         await waitForBattle(burst ? 55 : rapidNormalChain ? startsNormalPose ? 42 : 10 : 65);
       }
-      const sparkTargets = await resolveSparkFrame(unitId, targets.map((target) => target.instanceId));
-      const critical = Math.random() < CRITICAL_CHANCE;
+      const supportBurst = burst && !combatProfile.burstDoesDamage;
+      const sparkTargets = supportBurst ? new Set<string>() : await resolveSparkFrame(unitId, targets.map((target) => target.instanceId));
+      const critical = !supportBurst && Math.random() < CRITICAL_CHANCE;
       const now = performance.now();
       const timingScale = getBattleTimeScale(battleSpeed);
-      const heartDrop = primaryTarget.hp > 0 && step % 4 === 3 && state.party.some((member) => member.hp > 0 && member.hp < getFormStat(getUnit(member.id), save.unitStars[member.id] ?? 3, save.unitLevels[member.id] ?? 1, "hp"));
+      const heartDrop = !supportBurst && primaryTarget.hp > 0 && step % 4 === 3 && state.party.some((member) => member.hp > 0 && member.hp < getFormStat(getUnit(member.id), save.unitStars[member.id] ?? 3, save.unitLevels[member.id] ?? 1, "hp"));
       const anySpark = sparkTargets.size > 0;
       const ailment = burst && unit.id === "kael" ? "Burn" : anySpark && unit.id === "zephyra" ? "Shock" : critical && unit.id === "nyx" ? "Def Down" : "";
       const outcomes = targets.map((target, targetIndex) => {
@@ -2302,7 +2860,9 @@ export default function GatesOfAzura() {
         const spark = sparkTargets.has(target.instanceId);
         const wasAlive = target.hp > 0;
         const hitMultiplier = burst ? 1 / animationSteps : normalBeat.multiplier;
-        const damage = Math.max(1, Math.round(totalBase * hitMultiplier * advantage * variance * (critical ? CRITICAL_DAMAGE_MULTIPLIER : 1) * (spark ? SPARK_DAMAGE_MULTIPLIER : 1)));
+        const damage = burst && !combatProfile.burstDoesDamage
+          ? 0
+          : Math.max(1, Math.round(totalBase * hitMultiplier * advantage * variance * (critical ? CRITICAL_DAMAGE_MULTIPLIER : 1) * (spark ? SPARK_DAMAGE_MULTIPLIER : 1)));
         const killed = wasAlive && target.hp - damage <= 0;
         const kind: CrystalKind = killed ? (enemy.boss ? "material" : "gold") : heartDrop && targetIndex === 0 ? "heart" : "burst";
         return { target, enemy, advantage, damage, killed, kind, spark, wasAlive, fxId: `${attackId}-hit-${step}-${target.instanceId}` };
@@ -2310,19 +2870,21 @@ export default function GatesOfAzura() {
 
       if (anySpark) lastSparkAt.current = now;
 
-      const impactFeedback = [
-        unit.name,
-        attackScope === "all" ? "ALL-FOE" : "",
-        anySpark ? "AETHER SPARK +25%" : "",
-        critical ? "CRITICAL +50%" : "",
-        !anySpark && !critical && outcomes.some((outcome) => outcome.advantage > 1) ? "WEAKNESS!" : "",
-      ].filter(Boolean).join(" · ");
+      const impactFeedback = supportBurst
+        ? `${unit.name} · ${combatProfile.burstName} · HEALING LIGHT`
+        : [
+            unit.name,
+            attackScope === "all" ? "ALL-FOE" : "",
+            anySpark ? "AETHER SPARK +25%" : "",
+            critical ? "CRITICAL +50%" : "",
+            !anySpark && !critical && outcomes.some((outcome) => outcome.advantage > 1) ? "WEAKNESS!" : "",
+          ].filter(Boolean).join(" · ");
 
       updateBattleLive((current) => {
         const nextCombo = anySpark ? Math.min(99, current.combo + 1) : now - lastSparkAt.current > 650 * timingScale ? 0 : current.combo;
         let healed = false;
         const nextParty = current.party.map((member) => {
-          if (member.id === unitId) return { ...member, gauge: burst ? 0 : Math.min(100, member.gauge + Math.ceil(44 / animationSteps)) };
+          if (member.id === unitId) return { ...member, gauge: burst ? 0 : Math.min(100, member.gauge + Math.ceil(combatProfile.gaugeGain / animationSteps)) };
           if (heartDrop && !healed && member.hp > 0) {
             const maxHp = getFormStat(getUnit(member.id), save.unitStars[member.id] ?? 3, save.unitLevels[member.id] ?? 1, "hp");
             if (member.hp < maxHp) {
@@ -2332,10 +2894,13 @@ export default function GatesOfAzura() {
           }
           return member;
         });
-        const recoveredParty = burst && step === animationSteps - 1 && (unit.id === "lyra" || unit.id === "solenne") ? nextParty.map((member) => {
-          const ratio = unit.id === "solenne" ? 0.28 : 0.18;
+        const recoveredParty = burst && step === animationSteps - 1 && combatProfile.healRatio > 0 ? nextParty.map((member) => {
           const maxHp = getFormStat(getUnit(member.id), save.unitStars[member.id] ?? 3, save.unitLevels[member.id] ?? 1, "hp");
-          return { ...member, hp: Math.min(maxHp, member.hp + Math.round(maxHp * ratio)), ailment: "" };
+          return {
+            ...member,
+            hp: Math.min(maxHp, member.hp + Math.round(maxHp * combatProfile.healRatio)),
+            ailment: combatProfile.cleanse ? "" : member.ailment,
+          };
         }) : nextParty;
         const focusedOutcome = outcomes.find((outcome) => outcome.target.instanceId === current.targetEnemyId);
         const focusedEnemy = focusedOutcome ? current.enemies.find((enemy) => enemy.instanceId === focusedOutcome.target.instanceId) : null;
@@ -2347,20 +2912,22 @@ export default function GatesOfAzura() {
             const outcome = outcomes.find((candidate) => candidate.target.instanceId === member.instanceId);
             return outcome ? { ...member, hp: Math.max(0, member.hp - outcome.damage), ailments: ailment && !member.ailments.includes(ailment) ? [...member.ailments, ailment] : member.ailments } : member;
           }),
-          party: recoveredParty.map((member) => burst && step === animationSteps - 1 && unit.id === "kael" ? { ...member, buffs: member.buffs.includes("ATK UP") ? member.buffs : [...member.buffs, "ATK UP"] } : burst && step === animationSteps - 1 && unit.id === "brannock" ? { ...member, buffs: member.buffs.includes("GUARD UP") ? member.buffs : [...member.buffs, "GUARD UP"] } : member),
+          party: recoveredParty.map((member) => burst && step === animationSteps - 1 && combatProfile.burstBuff
+            ? { ...member, buffs: member.buffs.includes(combatProfile.burstBuff) ? member.buffs : [...member.buffs, combatProfile.burstBuff] }
+            : member),
           targetEnemyId: focusDefeated ? "" : current.targetEnemyId,
           loot: {
             gold: current.loot.gold + outcomes.reduce((total, outcome) => total + (outcome.killed ? 24 + quest.chapter * 8 : 0), 0),
             materials: current.loot.materials + outcomes.filter((outcome) => outcome.killed && (outcome.enemy.boss || Math.random() < 0.35)).length,
             hearts: current.loot.hearts + (heartDrop ? 1 : 0),
-            crystals: current.loot.crystals + outcomes.filter((outcome) => outcome.wasAlive).length,
+            crystals: current.loot.crystals + (supportBurst ? 0 : outcomes.filter((outcome) => outcome.wasAlive).length),
           },
           message: impactFeedback,
         };
       });
 
       setAttackFxs((current) => current.map((fx) => fx.id === attackId ? { ...fx, stage: "impact" } : fx));
-      const damageEffects: DamageFx[] = outcomes.map((outcome) => ({
+      const damageEffects: DamageFx[] = supportBurst ? [] : outcomes.map((outcome) => ({
         id: outcome.fxId,
         unitId: unit.id,
         targetEnemyId: outcome.target.instanceId,
@@ -2373,7 +2940,7 @@ export default function GatesOfAzura() {
         frame: attackFrame,
         finisher: burst && step === animationSteps - 1,
       }));
-      const crystalEffects: CrystalFx[] = outcomes.filter((outcome) => outcome.wasAlive).map((outcome) => ({ id: outcome.fxId, targetEnemyId: outcome.target.instanceId, unitId, kind: outcome.kind }));
+      const crystalEffects: CrystalFx[] = supportBurst ? [] : outcomes.filter((outcome) => outcome.wasAlive).map((outcome) => ({ id: outcome.fxId, targetEnemyId: outcome.target.instanceId, unitId, kind: outcome.kind }));
       setDamageFxs((current) => [...current, ...damageEffects]);
       setCrystalFxs((current) => [...current, ...crystalEffects]);
       const effectIds = new Set(outcomes.map((outcome) => outcome.fxId));
@@ -2383,7 +2950,7 @@ export default function GatesOfAzura() {
       const numeralLife = rapidNormalChain ? (normalAttackChain.length <= 4 ? 470 : normalAttackChain.length >= 8 ? 300 : 380) : 450;
       window.setTimeout(() => setDamageFxs((current) => current.filter((fx) => !effectIds.has(fx.id))), getBattleDuration(numeralLife, battleSpeed));
       window.setTimeout(() => setCrystalFxs((current) => current.filter((fx) => !effectIds.has(fx.id))), getBattleDuration(500, battleSpeed));
-      playSfx(anySpark ? "spark" : outcomes.some((outcome) => outcome.wasAlive && outcome.kind !== "burst") ? "crystal" : "hit");
+      playSfx(supportBurst ? "burst" : anySpark ? "spark" : outcomes.some((outcome) => outcome.wasAlive && outcome.kind !== "burst") ? "crystal" : "hit");
       // Weight the camera by what actually happened rather than shaking the
       // same amount for every beat. A heavy authored beat (Brannock's crush,
       // Kael's downswing) already carries a larger multiplier, so the chain's
@@ -2399,8 +2966,8 @@ export default function GatesOfAzura() {
         * (anySpark ? 1.22 : 1)
         * (outcomes.some((outcome) => outcome.killed) ? 1.25 : 1),
       );
-      setImpactPower(Number(hitPower.toFixed(2)));
-      setScreenImpact((value) => value + 1);
+      setImpactPower(Number((supportBurst ? 0.35 : hitPower).toFixed(2)));
+      if (!supportBurst) setScreenImpact((value) => value + 1);
 
       // A hit is a small authored sequence rather than an immediate frame swap:
       // connect, freeze on the damage pose, then recoil before the next drawing.
@@ -2418,14 +2985,14 @@ export default function GatesOfAzura() {
           ? 30
           : rapidNormalChain
             ? endsNormalPose && step < animationSteps - 1
-              ? getNormalCadence(unit.id).phrase
-              : getNormalCadence(unit.id).tick
+              ? getNormalCadence(unit.id, stars).phrase
+              : getNormalCadence(unit.id, stars).tick
             : 92,
       );
     }
 
     const resolved = battleRef.current;
-    if (resolved) updateBattleLive((state) => ({ ...state, message: `${unit.name} completes ${burst ? unit.burstName : "the attack chain"}. Tap another unit—overlap attacks to Spark.` }));
+    if (resolved) updateBattleLive((state) => ({ ...state, message: `${unit.name} completes ${burst ? combatProfile.burstName : combatProfile.attackName}. Tap another unit—overlap attacks to Spark.` }));
     setAttackFxs((current) => current.map((fx) => fx.id === attackId ? { ...fx, stage: "return" } : fx));
     await waitForBattle(140);
     setAttackFxs((current) => current.filter((fx) => fx.id !== attackId));
@@ -2471,7 +3038,7 @@ export default function GatesOfAzura() {
       message: `${getUnit(unitId).name} raises an Aether ward.`,
     }));
     setCombatFx({ phase: "guarding", serial: Date.now(), activeUnitId: unitId, activeEnemyId: "", targetUnitId: "", targetEnemyId: state.targetEnemyId, damage: 0, hits: 0, hitFrame: 0, spark: false, weakness: false, label: "GUARD" });
-    playSfx("tap");
+    playSfx("guard");
     await waitForBattle(260);
     setCombatFx((current) => ({ ...current, phase: "ready", activeUnitId: "", label: "" }));
     await advanceModernBattle();
@@ -2507,7 +3074,7 @@ export default function GatesOfAzura() {
   const trainUnit = (id: string) => {
     const level = save.unitLevels[id] ?? 1;
     const stars = save.unitStars[id] ?? 3;
-    const maxLevel = getMaxLevel(stars);
+    const maxLevel = getMaxLevel(stars, id as BattleUnitId);
     const cost = 420 + level * 12;
     if (save.gold < cost || save.materials.aether < 3 || level >= maxLevel) {
       setToast(level >= maxLevel ? (stars < 5 ? "Maximum level — Ascension available" : "Maximum level reached") : save.materials.aether < 3 ? "You need 3 Aether Shards" : "Not enough gold");
@@ -2530,16 +3097,16 @@ export default function GatesOfAzura() {
     const stars = save.unitStars[id] ?? 3;
     const level = save.unitLevels[id] ?? 1;
     if (stars >= 5) return setToast(`${unit.name} is already in the complete 5★ form`);
-    const sealCost = stars === 3 ? 2 : 4;
+    const ascensionCost = getUnitStarProfile(unit.id, stars).ascension;
     const elementKey = unit.element === "fire" ? "ember" : unit.element === "water" ? "tide" : unit.element === "earth" ? "grove" : unit.element === "thunder" ? "storm" : unit.element === "light" ? "radiance" : "umbral";
-    if (level < getMaxLevel(stars)) return setToast(`Reach Lv.${getMaxLevel(stars)} before Ascension`);
-    if (save.materials.seal < sealCost || (save.materials[elementKey] ?? 0) < 6) return setToast(`Ascension needs ${sealCost} Seals and 6 ${ELEMENTS[unit.element].label} Cores`);
+    if (level < getMaxLevel(stars, id as BattleUnitId)) return setToast(`Reach Lv.${getMaxLevel(stars, id as BattleUnitId)} before Ascension`);
+    if (save.materials.seal < ascensionCost.seals || (save.materials[elementKey] ?? 0) < ascensionCost.cores) return setToast(`Ascension needs ${ascensionCost.seals} Seals and ${ascensionCost.cores} ${ELEMENTS[unit.element].label} Cores`);
     const nextStars = (stars + 1) as StarTier;
     setSave((current) => ({
       ...current,
       unitStars: { ...current.unitStars, [id]: nextStars },
       unitLevels: { ...current.unitLevels, [id]: 1 },
-      materials: { ...current.materials, seal: current.materials.seal - sealCost, [elementKey]: current.materials[elementKey] - 6 },
+      materials: { ...current.materials, seal: current.materials.seal - ascensionCost.seals, [elementKey]: current.materials[elementKey] - ascensionCost.cores },
     }));
     setSelectedFormStars(nextStars);
     playSfx("evolve");
@@ -2547,6 +3114,7 @@ export default function GatesOfAzura() {
   };
 
   const summon = (gate: "aether" | "covenant" = "aether") => {
+    if (pendingSummon) return;
     if (gate === "aether" && save.gems < 5) {
       setToast("You need 5 Aether Gems");
       return;
@@ -2558,7 +3126,9 @@ export default function GatesOfAzura() {
     const available = UNITS.filter((unit) => !save.owned.includes(unit.id));
     const result = available[Math.floor(Math.random() * available.length)] ?? UNITS[Math.floor(Math.random() * UNITS.length)];
     const roll = Math.random();
-    const stars: StarTier = gate === "covenant" ? (roll < 0.08 ? 4 : 3) : save.summonPity >= 9 || roll < 0.08 ? 5 : roll < 0.48 ? 4 : 3;
+    const stars: StarTier = gate === "covenant"
+      ? roll < 0.08 ? 4 : roll < 0.5 ? 3 : 2
+      : save.summonPity >= 9 || roll < 0.08 ? 5 : roll < 0.38 ? 4 : roll < 0.78 ? 3 : 2;
     const duplicate = save.owned.includes(result.id);
     setSave((current) => ({
       ...current,
@@ -2568,14 +3138,50 @@ export default function GatesOfAzura() {
       materials: duplicate ? { ...current.materials, aether: current.materials.aether + 8 } : current.materials,
       owned: duplicate ? current.owned : [...current.owned, result.id],
       unitLevels: { ...current.unitLevels, [result.id]: current.unitLevels[result.id] ?? 1 },
-      unitStars: { ...current.unitStars, [result.id]: Math.max(current.unitStars[result.id] ?? 3, stars) as StarTier },
+      unitStars: { ...current.unitStars, [result.id]: Math.max(current.unitStars[result.id] ?? 2, stars) as StarTier },
       unitXp: { ...current.unitXp, [result.id]: current.unitXp[result.id] ?? 0 },
       burstLevels: { ...current.burstLevels, [result.id]: current.burstLevels[result.id] ?? 1 },
       summonPity: gate === "aether" ? (stars === 5 ? 0 : current.summonPity + 1) : current.summonPity,
       summonHistory: [`${stars}★ ${result.name}${duplicate ? " · Echo" : ""}`, ...current.summonHistory].slice(0, 12),
     }));
-    setSummonResult({ unit: result, stars, duplicate });
-    playSfx(stars === 5 ? "evolve" : "crystal");
+    // The result is locked in now (currency already spent); the chamber
+    // screen shows the gate before it's revealed.
+    setPendingSummon({ unit: result, stars, duplicate });
+    fadeToScreen("summon-chamber");
+  };
+
+  // The bloom starts as a small glow on the gate and grows over GATE_HOLD_MS
+  // until it has swallowed the whole screen in white; the actual screen
+  // swap happens at that instant (invisible, since everything is already
+  // white), then the bloom fades away to reveal the result underneath -
+  // a white-out instead of the usual black fade for this one transition.
+  const beginGateSequence = () => {
+    if (!pendingSummon || fadeBlack || gateCharging) return;
+    const result = pendingSummon;
+    playSfx("summon");
+    setGateCharging(true);
+    // Captured now (not read live from state) so the fade at the end still
+    // matches the colour the growth played in, even after pendingSummon and
+    // summonResult have already moved on.
+    setGateBloomColor(GATE_BLOOM_COLORS[result.stars] ?? GATE_BLOOM_DEFAULT);
+    setGateVoidColor(GATE_VOID_COLORS[result.stars] ?? GATE_VOID_DEFAULT);
+    setGateVoidFilter(GATE_VOID_SWIRL_FILTERS[result.stars] ?? GATE_VOID_SWIRL_FALLBACK);
+    setGateGemFilter(GATE_GEM_FILTERS[result.stars] ?? GATE_GEM_FILTER_FALLBACK);
+    setGateGlowColor(GATE_GLOW_COLORS[result.stars] ?? GATE_GLOW_DEFAULT);
+    setGateBloom("growing");
+    gateHoldTimeout.current = window.setTimeout(() => {
+      gateHoldTimeout.current = null;
+      setSummonResult(result);
+      playSfx(result.stars === 5 ? "evolve" : "crystal");
+      setPendingSummon(null);
+      setGateCharging(false);
+      go("summon-reveal");
+      setGateBloom("fading");
+      gateBloomTimeout.current = window.setTimeout(() => {
+        gateBloomTimeout.current = null;
+        setGateBloom("off");
+      }, GATE_BLOOM_FADE_MS);
+    }, GATE_HOLD_MS);
   };
 
   const toggleSquadUnit = (id: string) => {
@@ -2665,7 +3271,7 @@ export default function GatesOfAzura() {
       })),
       message: `${labels[mode]} begins — no focus set; single-target attacks prioritize the uppermost enemy.`,
     };
-    setSave((current) => ({ ...current, energy: current.energy - energyCost, lastEnergyAt: Date.now() }));
+    setSave((current) => ({ ...current, energy: current.energy - energyCost, lastEnergyAt: current.energy >= current.maxEnergy ? Date.now() : current.lastEnergyAt }));
     battleRef.current = nextBattle;
     setBattle(nextBattle);
     activeAttackIds.current.clear();
@@ -2699,10 +3305,29 @@ export default function GatesOfAzura() {
     setSave((current) => ({
       ...current,
       arenaOrbs: current.arenaOrbs - 1,
+      lastArenaAt: current.arenaOrbs >= MAX_ARENA_ORBS ? Date.now() : current.lastArenaAt,
       arenaRank: Math.max(0, current.arenaRank + (won ? 18 : -6)),
       gold: current.gold + (won ? 700 : 120),
     }));
     setToast(won ? "Victory! +18 AP, +700 gold" : "Defeat. Your squad gained experience.");
+  };
+
+  const assignOwnedUnitToSquad = (unitId: string) => {
+    setSave((current) => {
+      const squads = current.squads.map((squad) => [...squad]);
+      const active = [...(squads[current.activeSquad] ?? current.party)];
+      while (active.length < 5) active.push("");
+      const currentSlotUnit = active[squadEditSlot] ?? "";
+      const existingSlot = active.indexOf(unitId);
+      if (existingSlot === squadEditSlot) return current;
+      if (existingSlot >= 0) active[existingSlot] = currentSlotUnit;
+      active[squadEditSlot] = unitId;
+      const nextParty = active.filter(Boolean).slice(0, 5);
+      squads[current.activeSquad] = nextParty;
+      return { ...current, squads, party: nextParty };
+    });
+    setSquadEditSlot((current) => (current + 1) % 5);
+    playSfx("equip");
   };
 
   const isSunpetalChapter = save.unlockedStage <= 4;
@@ -2724,15 +3349,13 @@ export default function GatesOfAzura() {
   }[] = [
     {
       id: "story",
-      kicker: isSunpetalChapter ? "MAIN STORY · SUNPETAL VALE" : "MAIN STORY · THE SHATTERED CROWN",
-      title: "STORY",
-      accent: "QUEST",
-      copy: isSunpetalChapter
-        ? "Begin your adventure across sunny meadows, sparkling streams and flower-filled trails."
-        : "Cross three regions and reclaim the Crown before the Rift consumes Lume.",
-      meta: `Stage ${Math.min(save.unlockedStage, 15)} of 15 · ${save.energy} energy`,
-      action: "CONTINUE",
-      image: isSunpetalChapter ? "/stages/chapter-1-sunmeadow.webp" : "/destinations/story.webp",
+      kicker: "MAIN STORY",
+      title: "MAIN STORY",
+      accent: "",
+      copy: "",
+      meta: "",
+      action: "ENTER",
+      image: "/destinations/dragon-gate-card.webp",
       medallionArt: "/destinations/medallions/story.webp",
       medallionAlt: "The shattered Crown floating above an ancient Aether pedestal",
       tone: "story",
@@ -2740,12 +3363,12 @@ export default function GatesOfAzura() {
     },
     {
       id: "rift",
-      kicker: "ROTATING FRONTIER · REWARDS REFRESH",
+      kicker: "RIFT",
       title: "RIFT",
       accent: "GATE",
-      copy: "Challenge shifting elemental formations for cores, Relic Dust and rare Seals.",
-      meta: `${save.eventTokens} Rift tokens · 3 energy`,
-      action: "ENTER GATE",
+      copy: "",
+      meta: "",
+      action: "ENTER",
       image: "/destinations/rift-gate.webp",
       medallionArt: "/destinations/medallions/rift-gate.webp",
       medallionAlt: "An ancient dimensional gate opening into the elemental Rift",
@@ -2755,12 +3378,12 @@ export default function GatesOfAzura() {
     },
     {
       id: "tower",
-      kicker: "CROWN TRIAL · ENDLESS ASCENT",
+      kicker: "TRIALS",
       title: "AETHER",
       accent: "TOWER",
-      copy: "Carry one squad through escalating floors, boss laws and persistent pressure.",
-      meta: `Floor ${save.towerFloor} · Squad power ${squadPower}`,
-      action: "ASCEND",
+      copy: "",
+      meta: "",
+      action: "ENTER",
       image: "/destinations/aether-tower.webp",
       medallionArt: "/destinations/medallions/aether-tower.webp",
       medallionAlt: "The Aether Tower rising through violet energy rings",
@@ -2772,7 +3395,7 @@ export default function GatesOfAzura() {
   const activeHomeDestination = homeDestinations[homeBanner];
   const shiftHomeBanner = (direction: number) => {
     setHomeDragX(0);
-    setHomeBanner((current) => Math.max(0, Math.min(homeDestinations.length - 1, current + direction)));
+    setHomeBanner((current) => (current + direction + homeDestinations.length) % homeDestinations.length);
   };
   const openHomeDestination = (destination = activeHomeDestination) => {
     if (homeSwipe.current.moved) return;
@@ -2781,7 +3404,8 @@ export default function GatesOfAzura() {
   };
   const beginHomeSwipe = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
-    homeSwipe.current = { pointerId: event.pointerId, startX: event.clientX, moved: false };
+    const width = event.currentTarget.getBoundingClientRect().width || 320;
+    homeSwipe.current = { pointerId: event.pointerId, startX: event.clientX, startTime: performance.now(), width, moved: false };
     event.currentTarget.setPointerCapture(event.pointerId);
     setHomeDragX(0);
   };
@@ -2789,13 +3413,18 @@ export default function GatesOfAzura() {
     if (homeSwipe.current.pointerId !== event.pointerId) return;
     const travel = event.clientX - homeSwipe.current.startX;
     if (Math.abs(travel) > 10) homeSwipe.current.moved = true;
-    setHomeDragX(Math.max(-110, Math.min(110, travel)));
+    const limit = homeSwipe.current.width * 0.42;
+    setHomeDragX(Math.max(-limit, Math.min(limit, travel)));
   };
   const finishHomeSwipe = (event: ReactPointerEvent<HTMLElement>) => {
     if (homeSwipe.current.pointerId !== event.pointerId) return;
     const travel = event.clientX - homeSwipe.current.startX;
+    const elapsed = Math.max(1, performance.now() - homeSwipe.current.startTime);
+    const velocity = Math.abs(travel) / elapsed;
     try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* Capture may already be released. */ }
-    if (Math.abs(travel) > 45) shiftHomeBanner(travel > 0 ? -1 : 1);
+    const distanceThreshold = homeSwipe.current.width * 0.18;
+    const isFlick = velocity > 0.5 && Math.abs(travel) > 20;
+    if (Math.abs(travel) > distanceThreshold || isFlick) shiftHomeBanner(travel > 0 ? -1 : 1);
     else setHomeDragX(0);
     homeSwipe.current.pointerId = -1;
     window.setTimeout(() => { homeSwipe.current.moved = false; }, 0);
@@ -2803,94 +3432,119 @@ export default function GatesOfAzura() {
   const cancelHomeSwipe = (event: ReactPointerEvent<HTMLElement>) => {
     if (homeSwipe.current.pointerId !== event.pointerId) return;
     try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* Capture may already be released. */ }
-    homeSwipe.current = { pointerId: -1, startX: 0, moved: false };
+    homeSwipe.current = { pointerId: -1, startX: 0, startTime: 0, width: homeSwipe.current.width, moved: false };
     setHomeDragX(0);
   };
 
   const renderHome = () => {
-    const dailyClaimed = save.dailyClaimed === todayKey();
+    const activeSquad = (save.squads[save.activeSquad] ?? save.party).slice(0, 5);
     return (
       <>
-        <header className="frontier-home-header">
-          <div className="home-player-panel">
+        <header className="frontier-home-header reference-home-header">
+          <div className="home-player-panel reference-player-panel">
             <div className="home-player-line"><strong>CONOR</strong><span>Lv. {save.level}</span></div>
             <div className="home-meter xp"><small>EXP</small><i><b style={{ width: `${Math.min(100, save.xp / 10)}%` }} /></i><em>{save.xp}/1000</em></div>
             <div className="home-meter energy"><small>ENERGY</small><i><b style={{ width: `${save.energy / save.maxEnergy * 100}%` }} /></i><em>{save.energy}/{save.maxEnergy}</em></div>
+            <small className="home-regen-note">{!hydrated ? "" : save.energy >= save.maxEnergy ? "ENERGY FULL" : `+1 ENERGY · ${formatRegenTime(regenRemaining(clockNow, save.lastEnergyAt, ENERGY_REGEN_MS, save.energy, save.maxEnergy))}`}</small>
           </div>
 
-          <div className="home-crest" aria-label="Gates of Azura">
-            <span className="crest-radiance" aria-hidden="true" />
-            <button className="crest-gem" onClick={installApp} aria-label="Install Gates of Azura app"><Gem fill="currentColor" /></button>
+          <div className="home-crest reference-game-title" aria-label="Gates of Azura">
             <span className="crest-nameplate">
-              <small>GATES OF</small>
-              <strong>AZURA</strong>
+              <strong>GATES OF AZURA</strong>
             </span>
-            <em>{isSunpetalChapter ? "SUNPETAL VALE" : "THE SHATTERED CROWN"}</em>
           </div>
 
-          <div className="home-wallet-panel">
-            <div className="home-wallet-heading">
-              <strong>CROWN WARDEN</strong>
-              <button className="home-settings-button" onClick={() => { setSettingsOpen(true); playSfx("tap"); }} aria-label="Open game settings">
-                <Settings2 />
-              </button>
+          <div className="home-wallet-panel reference-wallet-panel">
+            <div className="home-arena-counter" title="Arena charges">
+              <Swords />
+              <span><strong>{save.arenaOrbs}/{MAX_ARENA_ORBS}</strong><small>{!hydrated ? "" : save.arenaOrbs >= MAX_ARENA_ORBS ? "ARENA FULL" : `+1 · ${formatRegenTime(regenRemaining(clockNow, save.lastArenaAt, ARENA_REGEN_MS, save.arenaOrbs, MAX_ARENA_ORBS))}`}</small></span>
             </div>
             <span><Gem fill="currentColor" />{save.gems.toLocaleString()}</span>
             <span><Coins fill="currentColor" />{save.gold.toLocaleString()}</span>
-            <div className="home-arena-orbs"><small>ARENA</small>{[0, 1, 2].map((orb) => <i key={orb} className={orb < save.arenaOrbs ? "full" : ""} />)}</div>
           </div>
         </header>
 
-        <button
-          className="home-main-story-gate"
-          onClick={() => { playSfx("tap"); go("quests"); }}
-          aria-label="Enter the Main Story"
-        >
-          <img src="/ui/main-story-gate.png" alt="Main Story dragon gate" draggable={false} />
-        </button>
+        <section className="home-party-showcase reference-party-showcase" aria-label="Current five-unit squad">
+          <div className="home-party-frame">
+            <div className="home-party-panels">
+              {Array.from({ length: 5 }, (_, index) => {
+                const id = activeSquad[index];
+                if (!id) return <span key={`empty-${index}`} className={`home-showcase-unit reference-empty-unit panel-${index + 1}`} aria-label={`Empty squad slot ${index + 1}`}><Plus /></span>;
+                const unit = getUnit(id);
+                const stars = save.unitStars[id] ?? 3;
+                return (
+                  <button
+                    key={`${id}-${index}`}
+                    className={`home-showcase-unit panel-${index + 1} unit-${unit.id} ${index === 0 ? "leader" : ""}`}
+                    onClick={() => { setSquadEditSlot(index); go("units"); }}
+                    aria-label={`${unit.name}, level ${save.unitLevels[id] ?? 1}, ${stars} star`}
+                  >
+                    <UnitKeyArt unit={unit} stars={stars} />
+                    {index === 0 && <span className="home-leader-ribbon"><Crown /> LEADER</span>}
+                    <span className="reference-unit-footer">
+                      <span className="reference-unit-stars">{Array.from({ length: stars }, (_, star) => <i key={star}>★</i>)}</span>
+                      <strong>Lv. {save.unitLevels[id] ?? 1}</strong>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        <div className="home-left-actions" aria-label="Home shortcuts">
+          <button onClick={() => { setMenuOpen(true); playSfx("tap"); }}><ScrollText /><span>Menu</span></button>
+          <button onClick={() => { setSettingsOpen(true); playSfx("tap"); }}><Settings2 /><span>Settings</span></button>
+        </div>
 
         <section
-          className={`home-destination destination-${activeHomeDestination.tone}`}
+          className="home-destination reference-gate-carousel"
           onPointerDown={beginHomeSwipe}
           onPointerMove={moveHomeSwipe}
           onPointerUp={finishHomeSwipe}
           onPointerCancel={cancelHomeSwipe}
+          aria-label="Swipe between game destinations"
         >
           <div
-            className="home-destination-track"
+            className="home-destination-track reference-gate-track"
             style={{
-              transform: `translate3d(calc(${-homeBanner * 100}% + ${homeDragX}px), 0, 0)`,
-              transition: homeDragX === 0 ? "transform .38s cubic-bezier(.2,.78,.2,1)" : "none",
+              transform: `translate3d(calc(-13% + ${homeDragX}px), 0, 0)`,
+              transition: homeDragX === 0 ? "transform .34s cubic-bezier(.2,.78,.2,1)" : "none",
             }}
           >
-            {homeDestinations.map((destination, index) => (
-              <article
-                key={destination.id}
-                className={`home-destination-slide destination-${destination.tone} ${destination.id === "story" && isSunpetalChapter ? "destination-sunpetal" : ""}`}
-                style={{ "--destination-image": `url(${destination.image})` } as CSSProperties}
-                aria-hidden={index !== homeBanner}
-              >
-                <div className="destination-atmosphere" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
-                <div className="destination-copy">
-                  <span>{destination.kicker}</span>
-                  <h1>{destination.title}<em>{destination.accent}</em></h1>
-                  <p>{destination.copy}</p>
-                  <small>{destination.meta}</small>
-                  <button className="destination-enter" onClick={() => openHomeDestination(destination)} tabIndex={index === homeBanner ? 0 : -1}>
-                    <Play fill="currentColor" />{destination.action}
+            {[-1, 0, 1].map((offset) => {
+              const index = (homeBanner + offset + homeDestinations.length) % homeDestinations.length;
+              const destination = homeDestinations[index];
+              return (
+                <article
+                  key={`${destination.id}-${offset}`}
+                  className={`reference-gate-slide destination-${destination.tone} ${offset === 0 ? "active" : ""}`}
+                  aria-hidden={false}
+                >
+                  <button
+                    className="reference-gate-button"
+                    onClick={() => openHomeDestination(destination)}
+                    aria-label={`Open ${destination.title} ${destination.accent}`}
+                  >
+                    <span className="reference-gate-image">
+                      <img src={destination.image} alt="" draggable={false} />
+                    </span>
+                    <strong>{destination.title}{destination.accent ? ` ${destination.accent}` : ""}</strong>
                   </button>
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
-          <button className="destination-arrow previous" disabled={homeBanner === 0} onClick={() => shiftHomeBanner(-1)} aria-label="Previous destination"><ChevronLeft /></button>
-          <button className="destination-arrow next" disabled={homeBanner === homeDestinations.length - 1} onClick={() => shiftHomeBanner(1)} aria-label="Next destination"><ChevronRight /></button>
-          <button className={`home-cache-ticket ${dailyClaimed ? "claimed" : ""}`} disabled={dailyClaimed} onClick={claimDaily}>
-            {dailyClaimed ? <Check /> : <Gift />}
-            <span><small>{dailyClaimed ? "CACHE OPENED" : "FREE AETHER CACHE"}</small><strong>{dailyClaimed ? "Return tomorrow" : "3 Gems + 1,200 Gold"}</strong></span>
-          </button>
-          <div className="destination-dots" aria-label="Choose a destination">
-            {homeDestinations.map((destination, index) => <button key={destination.id} className={index === homeBanner ? "active" : ""} onClick={() => { setHomeDragX(0); setHomeBanner(index); }} aria-label={destination.title + " " + destination.accent} />)}
+
+          <div className="destination-dots reference-gate-dots" aria-label="Choose a destination">
+            {homeDestinations.map((destination, index) => (
+              <button
+                key={destination.id}
+                className={index === homeBanner ? "active" : ""}
+                onClick={() => { setHomeDragX(0); setHomeBanner(index); }}
+                aria-label={`${destination.title} ${destination.accent}`}
+              />
+            ))}
           </div>
         </section>
       </>
@@ -2899,44 +3553,27 @@ export default function GatesOfAzura() {
 
   const renderQuests = () => (
     <>
-      <AppHeader save={save} title="Quest Map" onBack={() => go("home")} soundOn={soundOn} onSoundToggle={toggleSound} />
-      <section className={`map-banner ${isSunpetalChapter ? "map-banner-sunpetal" : ""}`}>
-        <span>{isSunpetalChapter ? "CHAPTER 1 · A CHEERFUL BEGINNING" : "STORY CAMPAIGN"}</span>
-        <h1>{isSunpetalChapter ? "Sunpetal Vale" : "The Shattered Crown"}</h1>
-        <p>{isSunpetalChapter
-          ? "Your adventure begins among warm meadows, crystal streams and playful Woblets."
-          : "Three regions, fifteen stages and a choice that will reshape the Aether."}</p>
-        <div className="chapter-progress"><span style={{ width: `${Math.min(100, save.completed.length / 15 * 100)}%` }} /></div>
-        <small>{Math.min(save.completed.length, 15)} / 15 stages cleared · {save.unlockedStage <= 4 ? "Sunpetal Vale" : save.unlockedStage <= 10 ? "The Glass Sea" : "Crownless Night"}</small>
-      </section>
-      <section className={`quest-path ${isSunpetalChapter ? "quest-path-sunpetal" : ""}`}>
-        {QUESTS.map((quest, index) => {
-          const locked = quest.id > save.unlockedStage;
-          const cleared = save.completed.includes(quest.id);
-          return (
-            <article key={quest.id} className={`quest-node quest-chapter-${quest.chapter} ${locked ? "locked" : ""} ${cleared ? "cleared" : ""}`}>
-              {[1, 5, 11].includes(quest.id) && <span className="region-ribbon">REGION {quest.chapter} · {quest.region}</span>}
-              {index < QUESTS.length - 1 && <span className="path-line" />}
-              <button className="node-orb" disabled={locked} onClick={() => openStory(quest.id)}>
-                {locked ? <Lock /> : cleared ? <Check /> : <span>{quest.id}</span>}
+      <AppHeader save={save} title="Main Story" onBack={() => go("home")} soundOn={soundOn} onSoundToggle={toggleSound} />
+      <section className="compact-story-map">
+        <header>
+          <div><small>THE SHATTERED CROWN</small><h1>Main Story</h1></div>
+          <span>{Math.min(save.completed.length, 15)}/15<small>CLEARED</small></span>
+        </header>
+        <div className="compact-story-progress"><i><b style={{ width: `${Math.min(100, save.completed.length / 15 * 100)}%` }} /></i><small>{save.unlockedStage <= 4 ? "Sunpetal Vale" : save.unlockedStage <= 10 ? "The Glass Sea" : "Crownless Night"}</small></div>
+        <div className="compact-quest-grid">
+          {QUESTS.map((quest) => {
+            const locked = quest.id > save.unlockedStage;
+            const cleared = save.completed.includes(quest.id);
+            return (
+              <button key={quest.id} className={`compact-quest quest-chapter-${quest.chapter} ${locked ? "locked" : ""} ${cleared ? "cleared" : ""}`} disabled={locked} onClick={() => openStory(quest.id)}>
+                <span>{locked ? <Lock /> : cleared ? <Check /> : quest.id}</span>
+                <strong>{quest.name}</strong>
+                <small><Zap />{quest.energy}</small>
               </button>
-              <div className="quest-card">
-                <div>
-                  <small>STAGE {quest.chapter}-{quest.chapter === 1 ? quest.id : quest.chapter === 2 ? quest.id - 4 : quest.id - 10}</small>
-                  <h2>{quest.name}</h2>
-                  <p>{quest.location}</p>
-                </div>
-                <div className="quest-intel"><span>{quest.waves.length} WAVES</span><span>REC. POWER {quest.recommended}</span></div>
-                <div className="quest-meta">
-                  <ElementBadge element={quest.element} compact />
-                  <span><Zap size={12} />{quest.energy}</span>
-                  <span><Coins size={12} />{quest.reward}</span>
-                </div>
-                {!locked && <button className="quest-enter" onClick={() => openStory(quest.id)}>{cleared ? "Replay" : "Enter"}<ChevronRight size={15} /></button>}
-              </div>
-            </article>
-          );
-        })}
+            );
+          })}
+        </div>
+        <footer><ScrollText /><span><strong>15 story stages</strong><small>Tap any unlocked stage to enter its scene and battle.</small></span></footer>
       </section>
     </>
   );
@@ -2945,11 +3582,25 @@ export default function GatesOfAzura() {
     const quest = QUESTS.find((item) => item.id === storyQuestId)!;
     const line = quest.intro[storyStep];
     const isLast = storyStep >= quest.intro.length - 1;
+    const speakerUnit = line.speaker === "Kael"
+      ? getUnit("kael")
+      : line.speaker === "Lyra"
+        ? getUnit("lyra")
+        : line.speaker === "Brannock"
+          ? getUnit("brannock")
+          : getUnit("solenne");
+    const speakerStars = save.unitStars[speakerUnit.id] ?? 2;
     return (
       <div className={`story-screen story-chapter-${quest.chapter}`}>
         <button className="story-back" onClick={() => go("quests")}><ChevronLeft /> Quest map</button>
         <div className={`story-sky ${quest.chapter === 1 ? "story-sky-sunpetal" : ""}`}><img src={quest.stage} alt="" /><span className="story-moon" /><span className="citadel" /></div>
-        <UnitPortrait unit={line.speaker === "Kael" ? getUnit("kael") : line.speaker === "Lyra" ? getUnit("lyra") : line.speaker === "Brannock" ? getUnit("brannock") : getUnit("solenne")} className="story-unit" />
+        <div
+          className={`story-unit story-speaker-sprite unit-${speakerUnit.id} form-${speakerStars}`}
+          role="img"
+          aria-label={`${speakerUnit.name}, ${speakerStars} star transparent dialogue sprite`}
+        >
+          <img src={getBattleSpriteSet(speakerUnit, speakerStars).idle[0]} alt="" draggable={false} />
+        </div>
         <div className="dialogue-box">
           <small>{quest.location} · {quest.name}</small>
           <strong>{line.speaker}</strong>
@@ -2973,6 +3624,10 @@ export default function GatesOfAzura() {
     const priorityInstance = focusedInstance ?? getTopPriorityEnemy(battle.enemies) ?? livingEnemies[0];
     const statusInstance = priorityInstance ?? battle.enemies[0];
     const targetedEnemy = getEnemy(priorityInstance?.enemyId ?? battle.enemies[0].enemyId);
+    const sameNameEnemies = battle.enemies.filter((enemy) => getEnemy(enemy.enemyId).name === targetedEnemy.name);
+    const targetedEnemyLabel = sameNameEnemies.length > 1
+      ? `${targetedEnemy.name} ${String.fromCharCode(65 + sameNameEnemies.findIndex((enemy) => enemy.instanceId === statusInstance.instanceId))}`
+      : targetedEnemy.name;
     const battleStageSrc = quest.chapter === 1 ? "/stages/chapter-1-sunmeadow.webp" : quest.stage;
     const stageId = quest.chapter === 1
       ? "field"
@@ -2999,11 +3654,21 @@ export default function GatesOfAzura() {
         <header className="battle-header">
           <button onClick={() => { setBattle(null); battleRef.current = null; go(battle.mode === "story" ? "quests" : "modes"); }}><ChevronLeft /></button>
           <div><small>{quest.name}</small><strong>WAVE {battle.wave + 1}/{quest.waves.length}</strong></div>
-          <div className="battle-header-actions"><span>TURN {battle.turn}</span><button onClick={() => setBattleSpeed((speed) => speed === 1 ? 2 : 1)}>{battleSpeed}×</button></div>
+          <div className="battle-header-actions">
+            <span>TURN {battle.turn}</span>
+            <button onClick={() => setBattleSpeed((speed) => speed === 1 ? 2 : 1)}>{battleSpeed}×</button>
+            <button
+              className={`field-auto-button ${autoTurnActive ? "running" : ""}`}
+              onClick={() => void queueAutoTurn()}
+              disabled={actionLocked || battle.party.every((member) => member.acted || member.hp <= 0)}
+              aria-label={autoTurnActive ? "Auto turn in progress" : "Play every ready unit in sequence"}
+            ><Play fill="currentColor" /><span>{autoTurnActive ? "RUN" : "AUTO"}</span></button>
+          </div>
         </header>
         <div
+          ref={battlefieldRef}
           className={`battlefield impact-beat-${screenImpact % 2} ${gameSettings.screenShake ? "" : "no-screen-shake"} ${attackFxs.some((fx) => fx.stage === "hitstop") ? "hit-stop-active" : ""} ${impactPower >= 2.1 ? "heavy-impact" : ""} ${livingEnemies.length ? "" : "enemy-defeated"}`}
-          style={{ "--impact-power": impactPower } as CSSProperties}
+          style={{ "--impact-power": impactPower, maxHeight: `${Math.round(battlefieldSize.width * 355 / 430)}px` } as CSSProperties}
         >
           <AnimatedBattleStage stageId={stageId} stageSrc={battleStageSrc} />
           <img className={`stage-background stage-poster ${stageId === "field" ? "stage-poster-sunpetal" : ""}`} src={battleStageSrc} alt={`${quest.location} battle stage`} draggable={false} style={stageId === "field" ? { objectPosition: "center 25%" } : undefined} />
@@ -3022,6 +3687,18 @@ export default function GatesOfAzura() {
               aria-hidden="true"
             />
           )}
+          <div
+            className="battlefield-stage-frame"
+            style={{
+              width: "430px",
+              height: "355px",
+              position: "absolute",
+              left: "50%",
+              bottom: "0",
+              transformOrigin: "bottom center",
+              transform: `translateX(-50%) scale(${Math.min(battlefieldSize.width / 430, battlefieldSize.height / 355)})`,
+            } as CSSProperties}
+          >
           <div className="battle-loot"><span><Gem />{battle.loot.crystals}</span><span><Heart />{battle.loot.hearts}</span><span><Coins />{battle.loot.gold}</span></div>
           <div className={`focus-state ${focusedInstance ? "manual" : "automatic"}`} role="status">
             <Target />
@@ -3125,7 +3802,7 @@ export default function GatesOfAzura() {
               return (
                 <div
                   key={`${unit.id}-${index}`}
-                  className={`field-unit field-slot-${index + 1} unit-${unit.id} ${RANGED_NORMAL_UNITS.has(unit.id) ? "ranged-normal" : "melee-normal"} ${member.acted ? "acted" : ""} ${member.guarding ? "guarded" : ""} ${member.hp <= 0 ? "fallen" : ""} ${isActive ? "active" : ""} ${attackFx?.phase === "burst" ? "bursting" : ""} attack-stage-${attackFx?.stage ?? "idle"} attack-beat-${(attackFx?.frame ?? 0) % 4} volley-${attackFx?.volley ?? 0} ${isTarget ? "targeted" : ""}`}
+                  className={`field-unit field-slot-${index + 1} unit-${unit.id} form-${stars} ${RANGED_NORMAL_UNITS.has(unit.id) ? "ranged-normal" : "melee-normal"} ${member.acted ? "acted" : ""} ${member.guarding ? "guarded" : ""} ${member.hp <= 0 ? "fallen" : ""} ${isActive ? "active" : ""} ${attackFx?.phase === "burst" ? "bursting" : ""} attack-stage-${attackFx?.stage ?? "idle"} attack-beat-${(attackFx?.frame ?? 0) % 4} volley-${attackFx?.volley ?? 0} ${isTarget ? "targeted" : ""}`}
                   style={{
                     "--combo-duration": `${Math.max(620, (attackFx?.hits ?? getNormalAttackChain(unit, stars).length) * 165)}ms`,
                     "--contact-x": `${attackFx?.contactX ?? 0}px`,
@@ -3142,7 +3819,7 @@ export default function GatesOfAzura() {
                     unit={unit}
                     stars={stars}
                     mode={spriteMode}
-                    attackFrame={(attackFx?.frame ?? 0) % Math.max(1, attackFx?.phase === "burst" ? unit.sprites.burst.length : unit.sprites.attack.length)}
+                    attackFrame={attackFx?.frame ?? 0}
                   />
                   {showBowLightning && attackFx && (
                     <span
@@ -3186,7 +3863,9 @@ export default function GatesOfAzura() {
               to provide, without three renderers fighting for the same pixels. */}
           {activeBurstFxs.map((burstFx) => {
             const burstUnit = getUnit(burstFx.unitId);
-            const finisher = burstFx.frame >= burstFx.hits - 1;
+            const burstStars = save.unitStars[burstUnit.id] ?? 3;
+            const burstProfile = getUnitCombatProfile(burstUnit, burstStars);
+            const finisher = burstFx.volley >= burstFx.hits - 1;
             const burstTargetIndex = Math.max(0, battle.enemies.findIndex((enemy) => enemy.instanceId === burstFx.targetEnemyId));
             const targetPosition = ENEMY_FORMATIONS[battle.enemies.length]?.[burstTargetIndex] ?? ENEMY_FORMATIONS[2][0];
             return (
@@ -3194,6 +3873,7 @@ export default function GatesOfAzura() {
                 <BurstRemotionOverlay
                   instanceId={burstFx.id}
                   unitId={burstUnit.id}
+                  stars={burstStars}
                   hitCount={burstFx.hits}
                   speed={battleSpeed}
                   targetLeft={targetPosition.left}
@@ -3201,7 +3881,7 @@ export default function GatesOfAzura() {
                   reducedEffects={gameSettings.reducedEffects}
                 />
                 {finisher && burstFx.stage !== "windup" && (
-                  <span className="burst-finisher-mark" aria-hidden="true"><strong>FINAL</strong><small>{burstUnit.burstName}</small></span>
+                  <span className="burst-finisher-mark" aria-hidden="true"><strong>{burstProfile.burstDoesDamage ? "FINAL" : "RESTORE"}</strong><small>{burstProfile.burstName}</small></span>
                 )}
               </Fragment>
             );
@@ -3215,6 +3895,7 @@ export default function GatesOfAzura() {
                 key={`attack-impact-${fx.id}`}
                 instanceId={fx.id}
                 unitId={fx.unitId}
+                stars={save.unitStars[fx.unitId] ?? 3}
                 speed={battleSpeed}
                 targetLeft={targetPosition.left}
                 targetBottom={targetPosition.bottom}
@@ -3278,23 +3959,20 @@ export default function GatesOfAzura() {
             return <span key={fx.id} className={`crystal-flight crystal-${fx.kind} crystal-from-${targetIndex + 1} crystal-to-${unitIndex + 1}`} aria-hidden="true"><Gem /></span>;
           })}
           <div className="enemy-status-rail">
-            <ElementBadge element={targetedEnemy.element} compact />
-            <div className="enemy-status-copy">
-              <span><small>{focusedInstance ? "FOCUS" : "PRIORITY"}</small><strong>{targetedEnemy.name}</strong></span>
-              <div className="enemy-status-hp" aria-label={`${targetedEnemy.name} health`}><i style={{ width: `${Math.max(0, statusInstance.hp / statusInstance.maxHp * 100)}%` }} /></div>
+            <div className="enemy-status-top">
+              <ElementBadge element={targetedEnemy.element} compact />
+              <strong>{targetedEnemyLabel}</strong>
             </div>
-            <em>{Math.max(0, statusInstance.hp).toLocaleString()} / {statusInstance.maxHp.toLocaleString()}</em>
-            <button
-              className={`field-auto-button ${autoTurnActive ? "running" : ""}`}
-              onClick={() => void queueAutoTurn()}
-              disabled={actionLocked || battle.party.every((member) => member.acted || member.hp <= 0)}
-              aria-label={autoTurnActive ? "Auto turn in progress" : "Play every ready unit in sequence"}
-            ><Play fill="currentColor" /><span>{autoTurnActive ? "RUN" : "AUTO"}</span></button>
+            <div className="enemy-status-hp-row">
+              <div className="enemy-status-hp" aria-label={`${targetedEnemy.name} health: ${Math.max(0, statusInstance.hp).toLocaleString()} of ${statusInstance.maxHp.toLocaleString()}`}>
+                <i style={{ clipPath: `inset(0 ${100 - Math.max(0, Math.min(100, statusInstance.hp / statusInstance.maxHp * 100))}% 0 0)` }} />
+              </div>
+            </div>
           </div>
           {battle.telegraph && <div className={`boss-telegraph ${battle.telegraph.turns <= 1 ? "imminent" : ""}`}><Target /><span><small>BOSS ART CHARGING</small><strong>{battle.telegraph.label}</strong></span><em>{battle.telegraph.turns}</em></div>}
           {(combatFx.phase === "opening" || combatFx.phase === "wave") && <div className="wave-banner" key={combatFx.serial}><small>{quest.location}</small><strong>{combatFx.label}</strong><span>{battle.enemies.length} ENEMIES</span></div>}
           {combatFx.phase === "guarding" && <div className="guard-banner"><Shield /> GUARD</div>}
-          <div className="battle-message">{battle.message}</div>
+          </div>
         </div>
 
         {burstIntroUnit && burstIntroFx && (
@@ -3302,8 +3980,9 @@ export default function GatesOfAzura() {
             key={`burst-intro-${burstIntroFx.id}`}
             instanceId={burstIntroFx.id}
             unitId={burstIntroUnit.id}
+            stars={save.unitStars[burstIntroUnit.id] ?? 3}
             burstName={burstIntroFx.label}
-            keyArtSrc={burstIntroUnit.keyArt}
+            keyArtSrc={getBattleSpriteSet(burstIntroUnit, save.unitStars[burstIntroUnit.id] ?? 3).burst[0]}
             speed={battleSpeed}
           />
         )}
@@ -3331,11 +4010,10 @@ export default function GatesOfAzura() {
                     else void queueAttack(unit.id, Boolean(swipeUp));
                   }}
                 >
-                  <UnitPortrait unit={unit} stars={stars} />
+                  <BattleFacePortrait unit={unit} stars={stars} />
                   <div className="battle-unit-data"><span className="battle-unit-name">{unit.name} <i>{stars}★</i></span><small>{isQueued ? "CHAIN ACTIVE" : member.guarding ? "GUARDING" : member.acted ? "ACTED" : canBurst ? "BURST READY" : unit.role.toUpperCase()}</small>
-                    <div className="mini-hp"><span style={{ width: `${Math.max(0, member.hp / maxHp * 100)}%` }} /></div>
-                    <div className="burst-bar"><span style={{ width: `${member.gauge}%` }} /></div>
-                    <em>{member.hp.toLocaleString()} HP <b>{member.gauge}% BB</b></em>
+                    <div className="mini-hp"><span style={{ clipPath: `inset(0 ${100 - Math.max(0, Math.min(100, member.hp / maxHp * 100))}% 0 0)` }} /><b>{member.hp.toLocaleString()}/{maxHp.toLocaleString()}</b></div>
+                    <div className="burst-bar"><span style={{ clipPath: `inset(0 ${100 - Math.max(0, Math.min(100, member.gauge))}% 0 0)` }} /><b>{member.gauge}% BB</b></div>
                   </div>
                 </button>
               );
@@ -3367,76 +4045,91 @@ export default function GatesOfAzura() {
     );
   };
 
-  const renderUnits = () => (
-    <>
-      <AppHeader save={save} title="Unit Archive" onBack={() => selectedUnitId ? setSelectedUnitId("") : go("home")} soundOn={soundOn} onSoundToggle={toggleSound} />
-      {selectedUnitId ? (
-        <section className={`unit-detail detail-${selectedUnit.element} viewing-form-${selectedFormStars}`}>
-          <div className="detail-hero">
-            <div className="detail-topline"><span>UNIT No. {String(UNITS.indexOf(selectedUnit) + 101).padStart(4, "0")}</span><Stars count={selectedFormStars} /></div>
-            {selectedFormStars === 5
-              ? <UnitKeyArt unit={selectedUnit} className="detail-portrait detail-key-art" />
-              : <UnitPortrait unit={selectedUnit} stars={selectedFormStars} className="detail-portrait" />}
-            <div className="detail-name"><ElementBadge element={selectedUnit.element} /><h1>{selectedUnit.name}</h1><p>{selectedUnit.formTitles[selectedFormStars]}</p></div>
-            <div className="detail-rating"><Swords /><span>{Math.round((selectedUnit.hp + selectedUnit.atk * 2 + selectedUnit.def) / 100 * getFormMultiplier(selectedFormStars))} POWER</span><b>{selectedUnit.role.toUpperCase()}</b></div>
-          </div>
-          <div className="unit-sheet">
-            <div className="evolution-track">
-              {([3, 4, 5] as StarTier[]).map((stars) => <button key={stars} className={`${selectedFormStars === stars ? "active" : ""} ${(save.unitStars[selectedUnit.id] ?? 3) >= stars ? "unlocked" : "locked"}`} onClick={() => setSelectedFormStars(stars)}><UnitPortrait unit={selectedUnit} stars={stars} /><span><Stars count={stars} /><strong>{selectedUnit.formTitles[stars]}</strong><small>{(save.unitStars[selectedUnit.id] ?? 3) === stars ? "CURRENT FORM" : (save.unitStars[selectedUnit.id] ?? 3) > stars ? "ARCHIVED" : "ASCENSION PREVIEW"}</small></span></button>)}
-            </div>
-            <div className="level-row"><span>Lv. <strong>{save.unitLevels[selectedUnit.id] ?? 1}</strong>/{getMaxLevel(save.unitStars[selectedUnit.id] ?? 3)}</span><span className="nature">{selectedUnit.nature} Nature · {save.unitStars[selectedUnit.id] ?? 3}★</span></div>
-            <div className="stat-grid">
-              <div><Heart /><span>HP</span><strong>{getFormStat(selectedUnit, selectedFormStars, save.unitLevels[selectedUnit.id] ?? 1, "hp").toLocaleString()}</strong></div>
-              <div><Swords /><span>ATK</span><strong>{getFormStat(selectedUnit, selectedFormStars, save.unitLevels[selectedUnit.id] ?? 1, "atk").toLocaleString()}</strong></div>
-              <div><Shield /><span>DEF</span><strong>{getFormStat(selectedUnit, selectedFormStars, save.unitLevels[selectedUnit.id] ?? 1, "def").toLocaleString()}</strong></div>
-              <div><Sparkles /><span>REC</span><strong>{getFormStat(selectedUnit, selectedFormStars, save.unitLevels[selectedUnit.id] ?? 1, "rec").toLocaleString()}</strong></div>
-            </div>
-            <div className="skill-panel leader-skill"><small><Crown /> LEADER ART</small><strong>{selectedUnit.leader.split(" — ")[0]}</strong><p>{selectedUnit.leader.split(" — ")[1]}</p></div>
-            <div className="skill-panel burst-skill"><small><Sparkles /> AETHER BURST · Lv. {save.burstLevels[selectedUnit.id] ?? 1}</small><strong>{selectedUnit.burstName}</strong><p>{selectedUnit.burst}</p></div>
-            {selectedFormStars >= 4 && <div className="skill-panel ascendant-skill"><small><Zap /> ASCENDANT BURST</small><strong>{selectedUnit.burstName} · Zenith</strong><p>Enhanced hit timing, a wider Spark window and an elemental squad boon.</p></div>}
-            {selectedFormStars === 5 && <div className="skill-panel crown-skill"><small><Crown /> CROWN ART</small><strong>{selectedUnit.formTitles[5]} Awakening</strong><p>A once-per-quest finisher unlocked when the Burst gauge overflows.</p></div>}
-            {(save.unitStars[selectedUnit.id] ?? 3) === 5 ? <div className="motion-preview"><small>5★ BATTLE MOTION SET · {getNormalAttackChain(selectedUnit, 5).length}-HIT NORMAL CHAIN · {selectedUnit.id === "zephyra" ? `${selectedUnit.sprites.attack.length}-FRAME BOW SEQUENCE` : selectedUnit.id === "solenne" ? `${selectedUnit.sprites.attack.length}-FRAME STAFF INVOCATION` : `${getNormalAttackChain(selectedUnit, 5).filter((beat, index, chain) => index === 0 || beat.pose !== chain[index - 1].pose).length} STRIKE POSES`}</small><div>{[
-              ["Idle A", selectedUnit.sprites.idleA],
-              ["Idle B", selectedUnit.sprites.idleB],
-              ...(selectedUnit.id === "zephyra" || selectedUnit.id === "solenne"
-                ? selectedUnit.sprites.attack.map((src, index) => [selectedUnit.id === "zephyra" ? `Bow ${index + 1}` : `Invocation ${index + 1}`, src])
-                : getNormalAttackChain(selectedUnit, 5)
-                  .filter((beat, index, chain) => index === 0 || beat.pose !== chain[index - 1].pose)
-                  .map((beat, index) => [`Strike ${index + 1}`, selectedUnit.sprites.attack[beat.frame]])),
-              ...selectedUnit.sprites.burst.map((src, index) => [`Burst ${index + 1}`, src]),
-            ].map(([label, src]) => <span key={label}><img src={src} alt={`${selectedUnit.name} ${label}`} /><em>{label}</em></span>)}</div></div> : <div className="motion-preview compact-form-motion"><small>{save.unitStars[selectedUnit.id] ?? 3}★ BATTLE MODEL · IDLE / DASH / 4-HIT CHAIN / BURST</small><div>{["Idle A", "Idle B", "Hit 1", "Hit 2", "Hit 3", "Hit 4", "Burst"].map((label) => <span key={label}><img src={getFormPortrait(selectedUnit, save.unitStars[selectedUnit.id] ?? 3)} alt={`${selectedUnit.name} ${label}`} /><em>{label}</em></span>)}</div></div>}
-            <div className="sphere-slot"><div><Gem /><span><small>EQUIPPED RELIC</small><strong>{save.equippedRelics[selectedUnit.id] ?? "No relic equipped"}</strong></span></div><em>{save.equippedRelics[selectedUnit.id] ? "BONUS ACTIVE" : "OPEN SLOT"}</em></div>
-            <div className="infusion-cost"><span><Gem /> Aether Shards <strong>{save.materials.aether}</strong></span><span><ArrowUp /> Ascension Seals <strong>{save.materials.seal}</strong></span></div>
-            <div className="detail-actions"><button onClick={() => trainUnit(selectedUnit.id)}><Plus />Aether Infusion <span>{420 + (save.unitLevels[selectedUnit.id] ?? 1) * 12} <Coins size={13} /></span></button><button onClick={() => ascendUnit(selectedUnit.id)} disabled={(save.unitStars[selectedUnit.id] ?? 3) >= 5}><ArrowUp />Ascend</button></div>
-          </div>
-        </section>
-      ) : (
-        <section className="archive-list">
-          <div className="archive-summary"><span><strong>{ownedUnits.length}</strong> / {UNITS.length}<small>DISCOVERED</small></span><span><strong>{save.party.length}</strong> / 5<small>IN SQUAD</small></span><button onClick={() => setUnitSort((current) => current === "rarity" ? "level" : "rarity")}><Target />{unitSort === "rarity" ? "Rarity" : "Level"}</button><button onClick={() => go("squad")}><Users />Squads</button></div>
-          <div className="unit-filters" role="group" aria-label="Filter units by element">
-            {ELEMENT_FILTERS.map((filter) => {
-              const Icon = filter === "all" ? Users : ELEMENTS[filter].Icon;
-              return <button key={filter} className={unitFilter === filter ? "active" : ""} onClick={() => setUnitFilter(filter)} aria-pressed={unitFilter === filter}><Icon />{filter === "all" ? "All" : ELEMENTS[filter].label}</button>;
-            })}
-          </div>
-          <div className="unit-grid">
-            {filteredUnits.map((unit) => {
-              const owned = save.owned.includes(unit.id);
+  const clearUnitHold = () => {
+    if (unitHold.current.timer) {
+      clearTimeout(unitHold.current.timer);
+      unitHold.current.timer = null;
+    }
+  };
+  const beginUnitHold = (unitId: string | null | undefined, stars: StarTier) => {
+    if (!unitId) return;
+    clearUnitHold();
+    unitHold.current.timer = setTimeout(() => {
+      unitHold.current.timer = null;
+      unitHold.current.suppressClick = true;
+      setSelectedUnitId(unitId);
+      setSelectedFormStars(stars);
+      playSfx("tap");
+    }, 480);
+  };
+  const finishUnitPress = (onTap: () => void) => {
+    clearUnitHold();
+    if (unitHold.current.suppressClick) {
+      unitHold.current.suppressClick = false;
+      return;
+    }
+    onTap();
+  };
+
+  const renderUnits = () => {
+    const active = (save.squads[save.activeSquad] ?? save.party).slice(0, 5);
+    return (
+      <>
+        <AppHeader save={save} title="Squad Builder" onBack={() => go("home")} soundOn={soundOn} onSoundToggle={toggleSound} />
+        <section className="squad-builder-screen">
+          <header className="squad-builder-heading">
+            <div><small>ACTIVE FORMATION {save.activeSquad + 1}</small><h1>Current Squad</h1></div>
+            <span><Swords /><strong>{squadPower}</strong><small>POWER</small></span>
+          </header>
+
+          <div className="podium-party" aria-label="Current five-unit squad">
+            {Array.from({ length: 5 }, (_, index) => {
+              const id = active[index];
+              const unit = id ? getUnit(id) : null;
               return (
-                <button key={unit.id} className={`archive-unit ${owned ? "" : "unowned"}`} disabled={!owned} onClick={() => { setSelectedUnitId(unit.id); setSelectedFormStars(save.unitStars[unit.id] ?? 3); }}>
-                  <UnitPortrait unit={unit} stars={save.unitStars[unit.id] ?? 3} />
-                  <ElementBadge element={unit.element} compact />
-                  <span className="archive-stars"><Stars count={save.unitStars[unit.id] ?? 3} /></span>
-                  <strong>{owned ? unit.name : "Unknown"}</strong>
-                  <small>{owned ? `Lv.${save.unitLevels[unit.id] ?? 1} · ${unit.role}` : "Summon to discover"}</small>
+                <button
+                  key={`${id ?? "empty"}-${index}`}
+                  className={`podium-slot ${squadEditSlot === index ? "selected" : ""} ${index === 0 ? "leader" : ""}`}
+                  onClick={() => setSquadEditSlot(index)}
+                  aria-label={unit ? `${unit.name}, level ${save.unitLevels[unit.id] ?? 1}` : `Empty squad slot ${index + 1}`}
+                >
+                  <span className="podium-light" />
+                  {unit ? <img className="podium-sprite" src={unit.sprites.idleA} alt={unit.name} /> : <Plus className="podium-empty" />}
+                  <span className="podium-base"><small>{index === 0 ? "LEADER" : `SLOT ${index + 1}`}</small><strong>{unit?.name ?? "Empty"}</strong></span>
                 </button>
               );
             })}
           </div>
+
+          <div className="owned-roster-heading">
+            <div><small>UNLOCKED UNITS</small><strong>Choose a unit for slot {squadEditSlot + 1}</strong></div>
+            <span>{save.owned.length} OWNED</span>
+          </div>
+          <div className="owned-unit-grid">
+            {ownedUnits.map((unit) => {
+              const inParty = active.includes(unit.id);
+              return (
+                <button
+                  key={unit.id}
+                  className={`${inParty ? "in-party" : ""} ${active[squadEditSlot] === unit.id ? "slot-match" : ""}`}
+                  onPointerDown={() => beginUnitHold(unit.id, save.unitStars[unit.id] ?? 3)}
+                  onPointerLeave={clearUnitHold}
+                  onPointerCancel={clearUnitHold}
+                  onClick={() => finishUnitPress(() => assignOwnedUnitToSquad(unit.id))}
+                  aria-label={`${unit.name}, tap to assign or hold to view unit details`}
+                >
+                  <span className="owned-unit-art"><UnitPortrait unit={unit} stars={save.unitStars[unit.id] ?? 3} /></span>
+                  <span><strong>{unit.name}</strong><small>Lv.{save.unitLevels[unit.id] ?? 1} · {save.unitStars[unit.id] ?? 3}★</small></span>
+                  {inParty && <Check />}
+                </button>
+              );
+            })}
+          </div>
+          <footer className="squad-builder-footer"><Users /><span>Tap a podium, then tap any unlocked unit below. Hold a unit below to view its details.</span></footer>
         </section>
-      )}
-    </>
-  );
+      </>
+    );
+  };
 
   const renderSummon = () => (
     <>
@@ -3446,80 +4139,158 @@ export default function GatesOfAzura() {
         <h1>Call beyond<br />the <em>Veil</em></h1>
         <p>Every summon reveals an original hero. Undiscovered units are guaranteed while the archive has space.</p>
         <div className="summon-resonance"><div><span>5★ RESONANCE PITY</span><strong>{save.summonPity}/10</strong></div><i><b style={{ width: `${Math.min(100, save.summonPity * 10)}%` }} /></i><small>The tenth Aether call is guaranteed to awaken at 5★</small></div>
-        <div className="summon-portal"><span className="portal-ring ring-one" /><span className="portal-ring ring-two" /><span className="portal-core" /><div className="summon-motes" aria-hidden="true">{Array.from({ length: 8 }, (_, index) => <i key={index} />)}</div><Gem size={54} /></div>
+        <div className="summon-portal"><GateArt /></div>
         <div className="featured-row">
           {[getUnit("nyx"), getUnit("zephyra"), getUnit("solenne")].map((unit) => <UnitPortrait key={unit.id} unit={unit} stars={5} />)}
         </div>
-        <div className="summon-actions"><button className="summon-button" onClick={() => summon("aether")}><Sparkles />AETHER CALL<span>5 <Gem size={15} /></span></button><button className="summon-button covenant-button" onClick={() => summon("covenant")}><Users />COVENANT CALL<span>200 <Sparkles size={15} /></span></button></div>
-        <small className="rates">5★ 8% · 4★ 42% · 3★ 50% · No purchases in this prototype</small>
+        {pendingSummon ? (
+          <div className="summon-actions">
+            <button className="summon-button" onClick={() => go("summon-chamber")}><Sparkles />RETURN TO THE GATE<span>Awaiting</span></button>
+          </div>
+        ) : (
+          <div className="summon-actions">
+            <button className="summon-button" onClick={() => summon("aether")}><Sparkles />AETHER CALL<span>5 <Gem size={15} /></span></button>
+            <button className="summon-button covenant-button" onClick={() => summon("covenant")}><Users />COVENANT CALL<span>200 <Sparkles size={15} /></span></button>
+          </div>
+        )}
+        <small className="rates">Aether: 5★ 8% · 4★ 30% · 3★ 40% · 2★ 22% · No purchases in this prototype</small>
         <div className="summon-history"><div><small>COVENANT POINTS</small><strong>{save.covenantPoints.toLocaleString()}</strong></div><div><small>RECENT CALLS</small><p>{save.summonHistory.length ? save.summonHistory.slice(0, 3).join(" · ") : "No calls recorded yet"}</p></div></div>
       </section>
-      {summonResult && (
-        <div className="result-overlay summon-result" onClick={() => setSummonResult(null)}>
-          <div className={`summoned-card ${summonResult.unit.element} rarity-${summonResult.stars}`} onClick={(event) => event.stopPropagation()}>
-            <small>{summonResult.duplicate ? "ECHO CONVERTED · +8 SHARDS" : "THE AETHER ANSWERS"}</small><Stars count={summonResult.stars} />
-            <UnitPortrait unit={summonResult.unit} stars={summonResult.stars} />
-            <ElementBadge element={summonResult.unit.element} />
-            <h2>{summonResult.unit.name}</h2><p>{summonResult.unit.formTitles[summonResult.stars]}</p>
-            <button onClick={() => { setSummonResult(null); setSelectedUnitId(summonResult.unit.id); setSelectedFormStars(summonResult.stars); go("units"); }}>View evolution path</button>
-          </div>
-        </div>
-      )}
     </>
   );
+
+  const leaveGateSequence = () => {
+    if (fadeBlack) return;
+    if (gateHoldTimeout.current !== null) {
+      window.clearTimeout(gateHoldTimeout.current);
+      gateHoldTimeout.current = null;
+    }
+    if (gateBloomTimeout.current !== null) {
+      window.clearTimeout(gateBloomTimeout.current);
+      gateBloomTimeout.current = null;
+    }
+    setGateCharging(false);
+    setGateBloom("off");
+    fadeToScreen("summon");
+  };
+
+  const renderSummonChamber = () => (
+    <section className="chamber-stage">
+      <img className="chamber-backdrop" src="/summon/chamber-cell.jpg" alt="A stone chamber lit by the gate's glow" draggable={false} />
+      <span className="chamber-backdrop-tint" aria-hidden="true" />
+      <button type="button" className="chamber-back" onClick={leaveGateSequence} aria-label="Go back"><ChevronLeft /></button>
+      <button
+        type="button"
+        className="chamber-gate"
+        onClick={beginGateSequence}
+        disabled={fadeBlack || gateCharging}
+        aria-label="Press the gate to begin the summon"
+        style={
+          gateCharging
+            ? {
+                "--gate-glow-lo": gateGlowColor.lo,
+                "--gate-glow-hi": gateGlowColor.hi,
+                transitionDuration: `${GATE_HOLD_MS}ms`,
+              } as CSSProperties
+            : undefined
+        }
+      >
+        {gateCharging && (
+          <span
+            className="chamber-gate-bloom"
+            style={{
+              animationDuration: `${GATE_HOLD_MS}ms`,
+              "--bloom-core": gateBloomColor.core,
+              "--bloom-mid": gateBloomColor.mid,
+              "--bloom-edge": gateBloomColor.edge,
+            } as CSSProperties}
+          />
+        )}
+        {/* A separate layer from the bloom above - if the fade-out lived on
+            .chamber-gate itself, opacity would multiply into the bloom span
+            too (opacity compounds with descendants) and dim it right as it's
+            supposed to be growing to full strength. */}
+        <span
+          className={`chamber-gate-art ${gateCharging ? "charging" : ""}`}
+          style={gateCharging ? { animationDuration: `${GATE_HOLD_MS}ms` } as CSSProperties : undefined}
+        >
+          <GateArt
+            voidCore={gateCharging ? gateVoidColor.core : undefined}
+            voidMid={gateCharging ? gateVoidColor.mid : undefined}
+            voidFilter={gateCharging ? gateVoidFilter : undefined}
+            gemFilter={gateCharging ? gateGemFilter : undefined}
+            voidFadeMs={GATE_HOLD_MS}
+          />
+        </span>
+      </button>
+      <p className="chamber-prompt">{gateCharging ? "THE GATE STIRS…" : "TAP THE GATE"}</p>
+    </section>
+  );
+
+  const renderSummonReveal = () => {
+    if (!summonResult) {
+      return (
+        <>
+          <AppHeader save={save} title="The Aether Answers" onBack={() => go("home")} soundOn={soundOn} onSoundToggle={toggleSound} />
+          <section className="summon-reveal-stage"><p>Nothing to reveal yet.</p><button className="primary-cta" onClick={() => go("summon")}>Return to the Gate</button></section>
+        </>
+      );
+    }
+    const unit = summonResult.unit;
+    return (
+      <>
+        <AppHeader save={save} title="The Aether Answers" onBack={() => { setSummonResult(null); go("home"); }} soundOn={soundOn} onSoundToggle={toggleSound} />
+        <section className="summon-reveal-stage">
+          <small>{summonResult.duplicate ? "ECHO CONVERTED · +8 SHARDS" : "A NEW HERO ANSWERS"}</small>
+          <Stars count={summonResult.stars} />
+          <button
+            type="button"
+            className={`summon-reveal-box ${unit.element}`}
+            onPointerDown={() => beginUnitHold(unit.id, summonResult.stars)}
+            onPointerLeave={clearUnitHold}
+            onPointerCancel={clearUnitHold}
+            onClick={() => finishUnitPress(() => setToast("Hold to view unit details"))}
+            aria-label={`${unit.name}, hold to view unit details`}
+          >
+            <UnitPortrait unit={unit} stars={summonResult.stars} />
+          </button>
+          <h1>{unit.name}</h1>
+          <p>{unit.formTitles[summonResult.stars]}</p>
+          <small className="summon-reveal-hint">Hold the box to view full unit details</small>
+          <div className="summon-reveal-actions">
+            <button className="primary-cta" onClick={() => { setSummonResult(null); go("units"); }}>Build squad</button>
+            <button onClick={() => { setSummonResult(null); go("summon"); }}>Return to the Gate</button>
+          </div>
+        </section>
+      </>
+    );
+  };
 
   const renderTown = () => (
     <>
       <AppHeader save={save} title="Hearthvale" onBack={() => go("home")} soundOn={soundOn} onSoundToggle={toggleSound} />
-      <section className="town-skyline"><span className="town-sun" /><div className="tower tower-a" /><div className="tower tower-b" /><div className="tower tower-c" /><div><small>YOUR RESTORED HAVEN</small><h1>Build hope from ruin</h1></div></section>
-      <section className="town-resource-nodes">
-        {[{ key: "ore", name: "Shard Mine", Icon: Hammer }, { key: "herbs", name: "Remedy Grove", Icon: Leaf }, { key: "water", name: "Aether River", Icon: Droplets }, { key: "timber", name: "Warden Farm", Icon: Castle }].map(({ key, name, Icon }) => <button key={key} onClick={gatherTown} className={save.lastTownGather === todayKey() ? "gathered" : ""}><Icon /><span><small>{name}</small><strong>{save.townResources[key]}</strong></span>{save.lastTownGather === todayKey() ? <Check /> : <Plus />}</button>)}
-      </section>
-      <section className="town-status"><span><Hammer /><small>FORGE</small><strong>Tier {save.forgeLevel}</strong></span><span><Droplets /><small>WELL</small><strong>+{save.wellLevel * 5}%</strong></span><span><Leaf /><small>GROVE</small><strong>{save.potions} ready</strong></span></section>
-      <section className="town-list">
-        <article><div className="facility-icon forge"><Hammer /></div><div><small>LEVEL {save.forgeLevel}</small><h2>Relic Forge</h2><p>Craft and refine Relics and Sigils.</p></div><button onClick={() => upgradeTown("forgeLevel", 1500)}>Upgrade<span>1,500 <Coins size={12} /></span></button></article>
-        <article><div className="facility-icon well"><Droplets /></div><div><small>LEVEL {save.wellLevel}</small><h2>Aether Well</h2><p>Improves energy recovery.</p></div><button onClick={() => upgradeTown("wellLevel", 2200)}>Upgrade<span>2,200 <Coins size={12} /></span></button></article>
-        <article><div className="facility-icon grove"><Leaf /></div><div><small>LEVEL {save.groveLevel}</small><h2>Remedy Grove</h2><p>Brews stronger quest items.</p></div><button onClick={() => upgradeTown("groveLevel", 1100)}>Upgrade<span>1,100 <Coins size={12} /></span></button></article>
-      </section>
-      <section className="craft-card"><div><FlaskConical /><span><small>QUICK CRAFT</small><strong>Restorative Potion</strong></span></div><p>Restore 35% HP to the full squad.</p><button onClick={() => {
-        if (save.gold < 300) return setToast("Not enough gold");
-        setSave((current) => ({ ...current, gold: current.gold - 300, potions: current.potions + 1 }));
-        setToast("Potion crafted");
-      }}>Craft 1 <span>300 <Coins size={12} /></span></button></section>
-      <section className="craft-card relic-craft"><div><Hammer /><span><small>RECIPE · STORY DISCOVERY</small><strong>Forge an awakened Relic</strong></span></div><p>10 Ore · 6 Timber · 5 Relic Dust. Crafted gear can be equipped from the Warden Vault.</p><button onClick={craftRelic}>Forge Relic <span>{save.materials.relicDust} dust</span></button></section>
-      <section className="town-services">
-        <article className="npc-dialogue"><span className="npc-avatar">M</span><div><small>MIRA · SHARDKEEPER</small><p>“The forge sings differently after every Crown Shard. New recipes appear as the story advances.”</p></div></article>
-        <article className="jukebox"><Volume2 /><div><small>SHARED MENU THEME</small><strong>{MUSIC_TRACKS["title-theme"].title}</strong><p>The same theme continues through every menu; only the Caravan Shop changes it.</p></div></article>
-        <article className="event-bazaar"><Gift /><div><small>RIFT TOKEN BAZAAR</small><strong>{save.eventTokens} tokens</strong><p>Exchange 80 tokens for 2 Ascension Seals.</p></div><button onClick={() => { if (save.eventTokens < 80) return setToast("You need 80 Rift Tokens"); setSave((current) => ({ ...current, eventTokens: current.eventTokens - 80, materials: { ...current.materials, seal: current.materials.seal + 2 } })); setToast("2 Ascension Seals acquired"); }}>Exchange</button></article>
+      <section className="compact-town-screen">
+        <header className="compact-town-hero"><span className="town-sun" /><div><small>YOUR RESTORED HAVEN</small><h1>Hearthvale</h1><p>Gather, improve facilities and prepare supplies.</p></div></header>
+        <div className="compact-town-resources">
+          {[{ key: "ore", name: "Shard Mine", Icon: Hammer }, { key: "herbs", name: "Remedy Grove", Icon: Leaf }, { key: "water", name: "Aether River", Icon: Droplets }, { key: "timber", name: "Warden Farm", Icon: Castle }].map(({ key, name, Icon }) => <button key={key} onClick={gatherTown} className={save.lastTownGather === todayKey() ? "gathered" : ""}><Icon /><span><small>{name}</small><strong>{save.townResources[key]}</strong></span>{save.lastTownGather === todayKey() ? <Check /> : <Plus />}</button>)}
+        </div>
+        <div className="compact-town-facilities">
+          {[{ key: "forgeLevel" as const, name: "Relic Forge", Icon: Hammer, cost: 1500, level: save.forgeLevel }, { key: "wellLevel" as const, name: "Aether Well", Icon: Droplets, cost: 2200, level: save.wellLevel }, { key: "groveLevel" as const, name: "Remedy Grove", Icon: Leaf, cost: 1100, level: save.groveLevel }].map(({ key, name, Icon, cost, level }) => <article key={key}><Icon /><div><small>LEVEL {level}</small><strong>{name}</strong></div><button onClick={() => upgradeTown(key, cost)}>{cost.toLocaleString()}<Coins /></button></article>)}
+        </div>
+        <div className="compact-town-actions">
+          <button onClick={() => {
+            if (save.gold < 300) return setToast("Not enough gold");
+            setSave((current) => ({ ...current, gold: current.gold - 300, potions: current.potions + 1 }));
+            setToast("Potion crafted");
+          }}><FlaskConical /><span><small>QUICK CRAFT</small><strong>Potion x{save.potions}</strong></span><em>300 <Coins /></em></button>
+          <button onClick={craftRelic}><Hammer /><span><small>RELIC FORGE</small><strong>{save.materials.relicDust} Dust</strong></span><em>Forge</em></button>
+          <button onClick={() => { if (save.eventTokens < 80) return setToast("You need 80 Rift Tokens"); setSave((current) => ({ ...current, eventTokens: current.eventTokens - 80, materials: { ...current.materials, seal: current.materials.seal + 2 } })); setToast("2 Ascension Seals acquired"); }}><Gift /><span><small>RIFT BAZAAR</small><strong>{save.eventTokens} Tokens</strong></span><em>Exchange</em></button>
+        </div>
       </section>
     </>
   );
 
-  const renderSquad = () => {
-    const active = save.squads[save.activeSquad] ?? save.party;
-    const usedCapacity = getSquadCost(active, save.unitStars);
-    return <>
-      <AppHeader save={save} title="Squad Hall" onBack={() => go("units")} soundOn={soundOn} onSoundToggle={toggleSound} />
-      <section className="squad-banner"><Users /><div><small>WARDEN FORMATIONS</small><h1>Build the chain</h1><p>Arrange five Eidolons, choose a Commander Art and stay within Warden Capacity.</p></div></section>
-      <section className="squad-tabs">{save.squads.map((squad, index) => <button key={index} className={save.activeSquad === index ? "active" : ""} onClick={() => selectSquad(index)}><small>FORMATION {index + 1}</small><strong>{squad.length}/5</strong></button>)}</section>
-      <section className="capacity-panel"><div><span>WARDEN CAPACITY</span><strong>{usedCapacity} / {save.wardenCapacity}</strong></div><i><b style={{ width: `${Math.min(100, usedCapacity / save.wardenCapacity * 100)}%` }} /></i></section>
-      <section className="formation-board">
-        {Array.from({ length: 5 }, (_, index) => {
-          const id = active[index];
-          const unit = id ? getUnit(id) : null;
-          return <div key={index} className={`formation-slot ${unit ? "filled" : "empty"}`}>
-            <span className="formation-order">{index === 0 ? <Crown /> : index + 1}</span>
-            {unit ? <><UnitPortrait unit={unit} stars={save.unitStars[id] ?? 3} /><strong>{unit.name}</strong><small>{save.unitStars[id] ?? 3}★ · COST {Math.max(12, unit.cost - (5 - (save.unitStars[id] ?? 3)) * 4)}</small></> : <><Plus /><strong>Open slot</strong><small>Tap a unit below</small></>}
-          </div>;
-        })}
-      </section>
-      {active[0] && <section className="commander-panel"><Crown /><div><small>COMMANDER ART · {getUnit(active[0]).name}</small><strong>{getUnit(active[0]).leader.split(" — ")[0]}</strong><p>{getUnit(active[0]).leader.split(" — ")[1]}</p></div></section>}
-      <section className="squad-roster"><div className="section-heading"><div><small>OWNED EIDOLONS</small><h2>Tap to add or remove</h2></div><span>{active.length}/5 selected</span></div><div>{ownedUnits.map((unit) => {
-        const selected = active.includes(unit.id);
-        return <button key={unit.id} className={selected ? "selected" : ""} onClick={() => toggleSquadUnit(unit.id)}><UnitPortrait unit={unit} stars={save.unitStars[unit.id] ?? 3} /><span><Stars count={save.unitStars[unit.id] ?? 3} /><strong>{unit.name}</strong><small>Lv.{save.unitLevels[unit.id] ?? 1} · {unit.role}</small></span>{selected ? <Check /> : <Plus />}</button>;
-      })}</div></section>
-    </>;
-  };
+  const renderSquad = () => renderUnits();
 
   const renderInventory = () => (
     <>
@@ -3559,7 +4330,7 @@ export default function GatesOfAzura() {
   const renderArena = () => (
     <>
       <AppHeader save={save} title="Astral Arena" onBack={() => go("home")} soundOn={soundOn} onSoundToggle={toggleSound} />
-      <section className="arena-hero"><Trophy /><small>BRONZE VANGUARD</small><h1>{save.arenaRank} AP</h1><p>Win duels to rise through the weekly ranks.</p><div className="arena-ladder"><div><span>Silver promotion</span><strong>{Math.max(0, 150 - save.arenaRank)} AP to go</strong></div><i><b style={{ width: `${Math.min(100, save.arenaRank / 1.5)}%` }} /></i></div><div className="orb-row">{[0,1,2].map((orb) => <span key={orb} className={orb < save.arenaOrbs ? "full" : ""}><Zap /></span>)}</div></section>
+      <section className="arena-hero"><Trophy /><small>BRONZE VANGUARD</small><h1>{save.arenaRank} AP</h1><p>Win duels to rise through the weekly ranks.</p><div className="arena-ladder"><div><span>Silver promotion</span><strong>{Math.max(0, 150 - save.arenaRank)} AP to go</strong></div><i><b style={{ width: `${Math.min(100, save.arenaRank / 1.5)}%` }} /></i></div><div className="orb-row">{Array.from({ length: MAX_ARENA_ORBS }, (_, orb) => <span key={orb} className={orb < save.arenaOrbs ? "full" : ""}><Zap /></span>)}</div><small className="arena-regen-label">{save.arenaOrbs >= MAX_ARENA_ORBS ? "5/5 CHARGES READY" : `NEXT CHARGE ${formatRegenTime(regenRemaining(clockNow, save.lastArenaAt, ARENA_REGEN_MS, save.arenaOrbs, MAX_ARENA_ORBS))}`}</small></section>
       <section className="opponent-card"><div className="opponent-top"><span className="rank-medallion"><Crown /></span><div><small>CHALLENGER</small><strong>Riftwalker Elian</strong><p>Squad power 112</p></div><span className="opponent-rank">#8,241</span></div><div className="mini-opponent-squad">{["nyx","brannock","lyra","zephyra","kael"].map((id) => <UnitPortrait key={id} unit={getUnit(id)} />)}</div><button className="primary-cta" onClick={quickArena}><Swords />Quick duel</button></section>
       <section className="arena-reward"><Gift /><div><small>NEXT RANK REWARD</small><strong>Silver Sigil Sphere</strong></div><span>150 AP</span></section>
     </>
@@ -3569,7 +4340,7 @@ export default function GatesOfAzura() {
     const missions = [
       { label: "Clear any story quest", progress: save.completed.length > 0, value: save.completed.length > 0 ? 100 : 25, reward: "500 Gold" },
       { label: "Train a unit", progress: Object.values(save.unitLevels).some((level) => level >= 25), value: Math.min(100, Math.max(...Object.values(save.unitLevels)) * 4), reward: "1 Gem" },
-      { label: "Fight in the Astral Arena", progress: save.arenaOrbs < 3, value: save.arenaOrbs < 3 ? 100 : 40, reward: "1 Potion" },
+      { label: "Fight in the Astral Arena", progress: save.arenaOrbs < MAX_ARENA_ORBS, value: save.arenaOrbs < MAX_ARENA_ORBS ? 100 : 40, reward: "1 Potion" },
     ];
     return <><AppHeader save={save} title="Warden’s Ledger" onBack={() => go("home")} soundOn={soundOn} onSoundToggle={toggleSound} /><section className="ledger-banner"><ScrollText /><div><small>DAILY / WEEKLY ORDERS</small><h1>Every path gives progress</h1><p>Daily orders refresh at dawn; weekly feats reward long-term play.</p></div></section><section className="mission-list">{missions.map((mission, index) => <article key={mission.label}><span className={mission.progress ? "done" : ""}>{mission.progress ? <Check /> : index + 1}</span><div className="mission-copy"><strong>{mission.label}</strong><small>{mission.progress ? "Complete" : "In progress"}</small><i><b style={{ width: `${mission.value}%` }} /></i></div><em>{mission.reward}</em></article>)}</section><section className="weekly-orders"><div className="section-heading"><div><small>WEEKLY FEATS</small><h2>Frontier cadence</h2></div><span>4d 11h</span></div>{[
       ["Clear 10 quest waves", Math.min(100, save.completed.length * 20), "5 Gems"],
@@ -3580,7 +4351,7 @@ export default function GatesOfAzura() {
 
   const renderShop = () => (
     <><AppHeader save={save} title="Caravan Shop" onBack={() => go("home")} soundOn={soundOn} onSoundToggle={toggleSound} /><section className="shop-banner"><PackageOpen /><div><small>NO REAL-MONEY PURCHASES</small><h1>Field Supplies</h1><p>Spend rewards earned through play.</p></div></section><section className="shop-list">
-      {[{name:"Restorative Potion",desc:"Heal the full squad by 35%.",price:300,stock:"Fresh batch",icon:FlaskConical},{name:"Vortex Key",desc:"Unlock a rotating event trial.",price:1800,stock:"2 remaining",icon:Lock},{name:"Bronze Relic Shard",desc:"Material for the Relic Forge.",price:950,stock:"Forge stock",icon:Gem}].map((item) => { const Icon=item.icon; return <article key={item.name}><div className="shop-icon"><Icon /></div><div><small className="shop-stock">{item.stock}</small><strong>{item.name}</strong><p>{item.desc}</p></div><button onClick={() => { if(save.gold<item.price)return setToast("Not enough gold"); setSave(current=>({...current,gold:current.gold-item.price,potions:item.name.includes("Potion")?current.potions+1:current.potions})); setToast(`${item.name} purchased`); }}>{item.price.toLocaleString()}<Coins /></button></article>; })}
+      {[{name:"Restorative Potion",desc:"Heal the full squad by 35%.",price:300,stock:"Fresh batch",icon:FlaskConical,art:"/ui/icons/shop-potion.png"},{name:"Vortex Key",desc:"Unlock a rotating event trial.",price:1800,stock:"2 remaining",icon:Lock,art:"/ui/icons/shop-key.png"},{name:"Bronze Relic Shard",desc:"Material for the Relic Forge.",price:950,stock:"Forge stock",icon:Gem,art:"/ui/icons/shop-relic-gem.png"}].map((item) => { const Icon=item.icon; return <article key={item.name}><div className="shop-icon">{item.art ? <img src={item.art} alt="" /> : <Icon />}</div><div><small className="shop-stock">{item.stock}</small><strong>{item.name}</strong><p>{item.desc}</p></div><button onClick={() => { if(save.gold<item.price){ playSfx("denied"); return setToast("Not enough gold"); } setSave(current=>({...current,gold:current.gold-item.price,potions:item.name.includes("Potion")?current.potions+1:current.potions})); playSfx("buy"); setToast(`${item.name} purchased`); }}>{item.price.toLocaleString()}<Coins /></button></article>; })}
     </section></>
   );
 
@@ -3593,16 +4364,33 @@ export default function GatesOfAzura() {
               : screen === "inventory" ? renderInventory()
                 : screen === "modes" ? renderModes()
                   : screen === "summon" ? renderSummon()
-                    : screen === "town" ? renderTown()
-                      : screen === "arena" ? renderArena()
-                        : screen === "missions" ? renderMissions()
-                          : renderShop();
+                    : screen === "summon-chamber" ? renderSummonChamber()
+                      : screen === "summon-reveal" ? renderSummonReveal()
+                        : screen === "town" ? renderTown()
+                          : screen === "arena" ? renderArena()
+                            : screen === "missions" ? renderMissions()
+                              : renderShop();
 
   return (
     <main className="game-shell">
       <div className={`game-app screen-${screen} ${gameSettings.reducedEffects ? "reduced-effects" : ""}`} data-soundtrack={musicTrackKey} data-music-state={soundOn ? "playing" : "muted"}>
         {content}
-        {!(["battle", "story"] as Screen[]).includes(screen) && <BottomNav screen={screen} go={go} save={save} />}
+        {!(["battle", "story", "summon-chamber", "summon-reveal"] as Screen[]).includes(screen) && <BottomNav screen={screen} go={go} save={save} />}
+        {menuOpen && (
+          <div className="menu-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setMenuOpen(false); }}>
+            <section className="menu-panel" role="dialog" aria-modal="true" aria-labelledby="menu-title">
+              <header><div><small>WARDEN COMMAND</small><h2 id="menu-title">Menu</h2></div><button onClick={() => setMenuOpen(false)} aria-label="Close menu"><X /></button></header>
+              <div className="menu-grid">
+                <button onClick={() => go("quests")}><ScrollText /><span><strong>Main Story</strong><small>Continue the campaign</small></span></button>
+                <button onClick={() => go("modes")}><Sparkles /><span><strong>Rift & Tower</strong><small>Events and trials</small></span></button>
+                <button onClick={() => go("inventory")}><PackageOpen /><span><strong>Inventory</strong><small>Relics and materials</small></span></button>
+                <button onClick={() => go("missions")}><Trophy /><span><strong>Missions</strong><small>Daily and weekly goals</small></span></button>
+                <button onClick={() => go("units")}><Users /><span><strong>Squad Builder</strong><small>Change your active party</small></span></button>
+                <button onClick={() => { setMenuOpen(false); void installApp(); }}><Home /><span><strong>Install Game</strong><small>Add to your home screen</small></span></button>
+              </div>
+            </section>
+          </div>
+        )}
         {settingsOpen && (
           <div className="settings-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
             <section className="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
@@ -3640,9 +4428,109 @@ export default function GatesOfAzura() {
             </section>
           </div>
         )}
+        {selectedUnitId && (() => {
+          const unit = selectedUnit;
+          const ownedStars = save.unitStars[unit.id] ?? 3;
+          const level = save.unitLevels[unit.id] ?? 1;
+          const maxLevel = getMaxLevel(ownedStars, unit.id);
+          const profile = getUnitCombatProfile(unit, ownedStars);
+          const spriteSet = getBattleSpriteSet(unit, ownedStars);
+          const trainCost = 420 + level * 12;
+          const equippedRelic = save.equippedRelics[unit.id];
+          const closeDetail = () => setSelectedUnitId("");
+          return (
+            <div className="menu-backdrop unit-detail-backdrop" onClick={(event) => { if (event.target === event.currentTarget) closeDetail(); }}>
+              <section className={`unit-detail detail-${unit.element}`} role="dialog" aria-modal="true" aria-labelledby="unit-detail-name">
+                <div className="detail-hero">
+                  <div className="detail-topline"><span>UNIT DETAILS</span><button onClick={closeDetail} aria-label="Close unit details"><X /></button></div>
+                  <UnitKeyArt unit={unit} stars={ownedStars} className="detail-portrait detail-key-art" />
+                  <span className="detail-rating"><Star size={13} fill="currentColor" /><span>{ownedStars}★</span><b>{unit.role} · {unit.nature}</b></span>
+                  <div className="detail-name">
+                    <ElementBadge element={unit.element} />
+                    <h1 id="unit-detail-name">{unit.name}</h1>
+                    <p>{unit.formTitles[ownedStars]}</p>
+                  </div>
+                </div>
+                <div className="unit-sheet">
+                  <div className="level-row"><span>Level {level} <small>/ {maxLevel}</small></span><span className="nature">{unit.nature}</span></div>
+                  <div className="stat-grid">
+                    <div><Heart /><span>HP</span><strong>{getFormStat(unit, ownedStars, level, "hp")}</strong></div>
+                    <div><Swords /><span>ATK</span><strong>{getFormStat(unit, ownedStars, level, "atk")}</strong></div>
+                    <div><Shield /><span>DEF</span><strong>{getFormStat(unit, ownedStars, level, "def")}</strong></div>
+                    <div><Zap /><span>REC</span><strong>{getFormStat(unit, ownedStars, level, "rec")}</strong></div>
+                  </div>
+                  <div className="skill-panel">
+                    <small><Crown size={14} />LEADER SKILL</small>
+                    <p>{profile.leader}</p>
+                  </div>
+                  <div className="skill-panel burst-skill">
+                    <small><Sparkles size={14} />{profile.burstDoesDamage ? `${profile.burstHits}-HIT BURST` : "HEALING BURST"}</small>
+                    <strong>{profile.burstName}</strong>
+                    <p>{profile.burstDescription}</p>
+                  </div>
+                  <div className="sphere-slot">
+                    <div><Gem /><div><small>EQUIPPED RELIC</small><strong>{equippedRelic ?? "None equipped"}</strong></div></div>
+                    <em>{save.relics.length} owned</em>
+                  </div>
+                  <div className="motion-preview">
+                    <small>UNIT MOTION</small>
+                    <div>
+                      <span><img src={spriteSet.idle[0]} alt="" /><em>IDLE</em></span>
+                      <span><img src={spriteSet.attack[2]} alt="" /><em>{profile.attackName}</em></span>
+                      <span><img src={spriteSet.burst[3]} alt="" /><em>{profile.burstDoesDamage ? "BURST" : "HEAL"}</em></span>
+                      <span><img src={getFormPortrait(unit, ownedStars)} alt="" /><em>FORM ART</em></span>
+                    </div>
+                  </div>
+                  <div className="detail-actions">
+                    <button onClick={() => trainUnit(unit.id)} disabled={level >= maxLevel}><Hammer />Train<span>{trainCost.toLocaleString()} <Coins /></span></button>
+                    <button onClick={() => ascendUnit(unit.id)} disabled={ownedStars >= 5 || level < maxLevel}><Sparkles />Ascend</button>
+                  </div>
+                </div>
+              </section>
+            </div>
+          );
+        })()}
         {toast && <div className="toast" role="status">{toast}</div>}
       </div>
+      <div className={`fade-overlay ${fadeBlack ? "active" : ""}`} aria-hidden="true" />
+      {gateBloom === "fading" && (
+        <div className="gate-bloom fading" aria-hidden="true">
+          <span
+            className="gate-bloom-core"
+            style={{
+              "--bloom-core": gateBloomColor.core,
+              "--bloom-mid": gateBloomColor.mid,
+              "--bloom-edge": gateBloomColor.edge,
+            } as CSSProperties}
+          />
+        </div>
+      )}
       <aside className="desktop-note"><Sparkles /><h2>Gates of Azura</h2><p>A portrait RPG designed for touch. Open this page on Android and choose <strong>Add to Home screen</strong> for the app experience.</p><span>ORIGINAL PLAYABLE PROTOTYPE</span></aside>
+      {(!hydrated || !titleAssetsReady) && (
+        <div className="title-gate title-gate-loading" role="status" aria-live="polite">
+          <span className="title-gate-crest"><Sparkles /></span>
+          <strong className="title-gate-wordmark">GATES OF AZURA</strong>
+          <span className="title-gate-loading-bar"><i /></span>
+          <small>Gathering the Frontier…</small>
+        </div>
+      )}
+      {hydrated && titleAssetsReady && titleGateOpen && (
+        <div className="title-gate title-gate-splash">
+          <div className="title-gate-collage" aria-hidden="true">
+            {UNITS.map((unit) => (
+              <img key={unit.id} src={getFormPortrait(unit, 5) ?? unit.keyArt} alt="" draggable={false} />
+            ))}
+          </div>
+          <div className="title-gate-scrim" />
+          <div className="title-gate-content">
+            <span className="title-gate-eyebrow">A PORTRAIT RPG</span>
+            <h1 className="title-gate-wordmark">GATES OF <em>AZURA</em></h1>
+            <button className="title-gate-start" onClick={() => setTitleGateOpen(false)}>
+              <Play fill="currentColor" />TAP TO BEGIN
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

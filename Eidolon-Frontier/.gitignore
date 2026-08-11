@@ -42,3 +42,12 @@ next-env.d.ts
 /.sites-runtime/
 /outputs/
 /work/
+
+# standalone/mobile Android build outputs
+/dist-mobile/
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/app/src/main/assets/www/
+*.jks
+*.keystore

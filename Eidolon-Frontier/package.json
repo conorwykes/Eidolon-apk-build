@@ -1,6 +1,6 @@
 {
-  "name": "eidolon-frontier",
-  "version": "53.0.0",
+  "name": "gates-of-azura",
+  "version": "57.0.0",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -14,7 +14,9 @@
     "validate:artifact": "bash scripts/validate-artifact.sh",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
-    "remotion:studio": "remotion studio remotion/index.ts --no-open"
+    "remotion:studio": "remotion studio remotion/index.ts --no-open",
+    "build:mobile": "vite build --config vite.mobile.config.ts",
+    "android:prepare": "npm run build:mobile && rm -rf android/app/src/main/assets/www && mkdir -p android/app/src/main/assets/www && cp -R dist-mobile/. android/app/src/main/assets/www/"
   },
   "dependencies": {
     "@remotion/player": "4.0.506",

@@ -5,10 +5,10 @@ the GitHub Actions workflow that packages it as a signed Android APK.
 
 ## Current version
 
-- Game source: `Eidolon-Frontier/` (v53)
+- Game source: `Eidolon-Frontier/` (v57, "Gates of Azura")
 - Android application ID: `com.eidolon.frontier`
-- Android `versionCode`: `53`
-- Android `versionName`: `53.0`
+- Android `versionCode`: `57`
+- Android `versionName`: `57.0`
 - APK workflow: `.github/workflows/Build-apk.yml`
 
 The source in `Eidolon-Frontier/` is authoritative. Future game changes should
@@ -31,19 +31,28 @@ and embeds the result in a small native Android wrapper.
 
 ## Android releases
 
-Run the **Build Eidolon Frontier v53 APK** workflow from GitHub Actions. It:
+Run the **Build Eidolon Frontier v57 APK** workflow from GitHub Actions. It:
 
 1. packages a clean editable-source ZIP for backup;
 2. builds the offline mobile Vite bundle;
 3. wraps it as `com.eidolon.frontier`;
 4. signs it with the repository's existing Android signing secrets;
 5. verifies the APK signature; and
-6. uploads the APK, checksum, and source backup to the `v53` GitHub Release.
+6. uploads the APK, checksum, and source backup to the `v57` GitHub Release.
 
 The signing secret values must never be printed, replaced, removed, or
 committed. Keeping the existing secrets and application ID is required for the
 APK to install as an update over earlier releases.
 
+
+## v57 changes
+
+- Complete 2★-5★ evolution sprite-sheet progressions for all six units, each with rarity-specific stats, attack/Burst names, hit counts, and scopes.
+- Rarity-aware UI: matching 2★-5★ character illustrations and face portraits used across unit cards, unit details, Burst cut-ins, and the home squad divider.
+- Normal attacks are single-target at every star tier (a data bug had 5★, and Solenne's 4★, normal attacks hitting all enemies).
+- Battlefield sizing, grounding, and facing direction tuned per unit per star tier so the squad reads as a consistent scale and stands on its shadow instead of floating.
+- Idle animation stability fix: removed a redundant whole-body bob that fought the per-unit breathing animation, plus rebuilt 5★ idle loops as six-frame combined sheets with locked anchors.
+- Restored Lyra as the Android launcher/APK icon.
 
 ## v53 changes
 

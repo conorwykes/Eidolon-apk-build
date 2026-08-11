@@ -1,108 +1,92 @@
-# vinext-starter
+# Gates of Azura v57
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+Gates of Azura is a portrait-first squad RPG built with React, Vite/Vinext and Remotion-powered battle effects.
 
-## Prerequisites
+This repository contains the complete editable v57 game source plus an **offline Android wrapper** and GitHub Actions workflows that can build an installable APK automatically.
 
-- Node.js `>=22.13.0`
-- Linux with `flock`, `curl`, and GNU `timeout`
+## Run the web game locally
 
-## Sites Lifecycle
+Requirements: Node.js 22.13 or newer.
 
-The Sites lifecycle CLI runs the locked dependency install before returning this checkout. Edit the source under `app/`, then checkpoint when a coherent milestone is ready to inspect or share. The remote Sites builder runs `npm run build` against the pushed commit. Do not repeat install or build as a normal pre-checkpoint step.
-
-This starter does not use `wrangler.jsonc`.
-
-`install:ci` is intentionally a single, non-retrying `npm ci`. It refuses a concurrent install for the same project, consumes a matching image-seeded npm cache with `--prefer-offline` while retaining registry fallback for a missing cache object, otherwise downloads and verifies the complete vinext tarball recorded in `package-lock.json`, limits npm to one socket, and terminates a stalled install. `build` applies a short timeout and then validates the Sites artifact. These helpers target Linux and use GNU `timeout`; they are not native macOS scripts.
-
-Scripts that need writable project-scoped home, npm, XDG, and temporary paths use `scripts/sites-env.sh`. The `dev` and `start` scripts honor the caller's runtime environment and keep Wrangler logs inside the checkout. The generated `.sites-runtime/` directory is disposable and ignored by Git.
-
-## Included Shape
-
-- edit site code under `app/`
-- `app/chatgpt-auth.ts` provides optional dispatch-owned ChatGPT sign-in helpers
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/index.ts` reads the D1 binding from the Cloudflare Worker environment
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```bash
+npm ci
+npm run dev
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+## Build the normal web deployment
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+```bash
+npm run build
+```
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
+## Build the standalone mobile web bundle
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
+The mobile bundle reuses the same `app/page.tsx`, game logic, CSS and `public/` assets. It does not maintain a second copy of the game.
 
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
+```bash
+npm ci
+npm run build:mobile
+```
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
+Output: `dist-mobile/`
 
-## Diagnostic Commands
+## Prepare assets for Android
 
-- `npm run install:ci`: perform the one bounded lockfile install
-- `npm run dev`: start the Vite/Vinext development server
-- `npm run build`: build and validate the deployable Sites artifact
-- `npm run start`: start the built Vinext application
-- `npm test`: build, validate, and verify the rendered development-preview metadata
-- `npm run validate:artifact`: recheck an existing artifact's manifest and ESM `default.fetch` export
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+```bash
+npm run android:prepare
+```
 
-Use build and validation commands for targeted diagnosis after a remote failure, not as part of the normal checkpoint path.
+This builds the standalone web bundle and copies it into `android/app/src/main/assets/www/` for the native Android WebView shell.
 
-The timeout defaults can be overridden for a controlled canary with `SITES_INSTALL_TIMEOUT`, `SITES_INSTALL_KILL_AFTER`, `SITES_BUILD_TIMEOUT`, and `SITES_BUILD_KILL_AFTER`. A timeout fails the command; the helpers never retry an unchanged install or build.
+## GitHub APK build
 
-## Learn More
+The repository includes `.github/workflows/build-apk.yml`.
 
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+On every push to `main` (or a manual workflow run), GitHub Actions will:
+
+1. install the locked Node dependencies;
+2. build the offline mobile bundle;
+3. copy the complete game into the Android app;
+4. install the Android 36 SDK;
+5. build an Android debug APK; and
+6. upload `Gates-of-Azura-v57-debug-apk` as a downloadable workflow artifact.
+
+The debug APK does **not** need a hosted website: the game and its assets are bundled inside the APK.
+
+## Android identity
+
+- Application ID: `game.gatesofazura.app`
+- Debug ID: `game.gatesofazura.app.debug`
+- Version code: `57`
+- Version name: `57.0`
+- Orientation: portrait
+- Minimum Android: API 24 (Android 7.0)
+- Target/compile SDK: API 36
+
+## Signed releases
+
+`.github/workflows/build-release.yml` can produce a signed release APK and Play Store AAB after these GitHub Actions secrets are configured:
+
+- `ANDROID_KEYSTORE_BASE64`
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+
+A tag such as `v57.0` will also attach the signed APK/AAB to a GitHub Release.
+
+**Keep the release keystore and passwords private.** Losing the release key can prevent future updates to the same Play Store app identity.
+
+## Important source locations
+
+- `app/page.tsx` — main game/UI
+- `app/globals.css` — game styling
+- `game/` — battle timing/choreography
+- `public/` — unit art, stages, destinations, audio and icons
+- `remotion/` — animated battle VFX
+- `mobile/` — standalone Vite entry point used by the APK
+- `android/` — native offline Android shell
+- `.github/workflows/` — automatic APK/release builds
+
+## Save behaviour
+
+Progress remains device-local using the game's browser storage. The Android wrapper uses a stable local HTTPS origin (`appassets.androidplatform.net`) so WebView storage persists between launches and updates under the same app ID.
