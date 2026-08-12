@@ -768,7 +768,13 @@ rotation{--burst-origin-x:43%;--burst-origin-y:55%;--burst-rotation:0deg;--burst
 .field-unit:not(.active):not(.fallen){animation:groundedIdle 1.72s ease-in-out infinite!important;animation-delay:var(--idle-delay)!important}
 .field-unit-shadow{left:15%;right:15%;bottom:1px;height:10px;background:#000d;filter:blur(3px);transform:scaleX(1.16)}
 .field-unit-aura{left:19%;right:19%;bottom:6px;height:29px;opacity:.34;box-shadow:0 0 9px #55dfd444}
-.field-unit.active{animation:none!important;transform-origin:center bottom;will-change:transform}
+/* No will-change:transform here on purpose: this element also carries
+   filter:drop-shadow(...) (see .field-unit's base rule) and its transform
+   changes on nearly every attack stage. Forcing early GPU layer promotion
+   on a filtered element whose transform keeps changing is a known trigger
+   for stale/ghosted layer content on some Android WebView GPU drivers -
+   reported as a translucent duplicate of the attacking unit itself. */
+.field-unit.active{animation:none!important;transform-origin:center bottom}
 /* Approach/return glide over --contact-x/y with the base .field-unit.active
    transition (defined further up) rather than a keyframe @animation: a
    keyframe animation can't reliably tween translate(var(--contact-x)) since
@@ -979,7 +985,13 @@ emblem{
 .battlefield.impact-beat-1{
   --shake-x:calc(var(--impact-power,1) * 2.1px);
   --shake-y:calc(var(--impact-power,1) * 1.15px);
-  will-change:transform;
+  /* No will-change hint here on purpose: this class toggles on every single
+     hit, and forcing early GPU layer promotion on a container this broad
+     (it wraps every unit, enemy and effect layer) right as it's constantly
+     being torn down and recreated is a known trigger for stale/ghosted
+     layer content on some Android WebView GPU drivers - reported as a
+     translucent duplicate of whatever was mid-animation. Letting the
+     browser decide layer promotion organically avoids forcing that churn. */
 }
 .battlefield.impact-beat-0{animation:cameraKickA calc(.13s * var(--battle-time-scale,1)) cubic-bezier(.2,.85,.3,1)}
 .battlefield.impact-beat-1{animation:cameraKickB calc(.13s * var(--battle-time-scale,1)) cubic-bezier(.2,.85,.3,1)}
