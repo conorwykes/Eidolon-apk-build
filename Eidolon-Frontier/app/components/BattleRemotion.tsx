@@ -5,8 +5,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Player } from "@remotion/player";
 import {
-  ATTACK_IMPACT_DURATION,
-  AttackImpactComposition,
   KaelFireBurstIntro,
   StageMotionComposition,
   type BattleStageId,
@@ -64,57 +62,6 @@ export function AnimatedBattleStage({ stageId, stageSrc }: { stageId: BattleStag
         />
       </div>
     </>
-  );
-}
-
-export function AttackImpactOverlay({
-  instanceId,
-  unitId,
-  stars,
-  speed,
-  targetLeft,
-  targetBottom,
-  hitIndex,
-  critical,
-  spark,
-  reducedEffects = false,
-}: {
-  instanceId: string;
-  unitId: string;
-  stars: 2 | 3 | 4 | 5;
-  speed: 1 | 2;
-  targetLeft: number;
-  targetBottom: number;
-  hitIndex: number;
-  critical: boolean;
-  spark: boolean;
-  reducedEffects?: boolean;
-}) {
-  return (
-    <div className="remotion-attack" data-attack-instance={instanceId} aria-hidden="true">
-      <Player
-        key={instanceId}
-        component={AttackImpactComposition}
-        durationInFrames={ATTACK_IMPACT_DURATION}
-        compositionWidth={430}
-        compositionHeight={355}
-        fps={30}
-        inputProps={{
-          unitId: unitId as BurstUnitId,
-          stars,
-          targetLeft,
-          targetBottom,
-          hitIndex,
-          critical,
-          spark,
-          reducedEffects,
-        }}
-        autoPlay
-        playbackRate={getBattlePlaybackRate(speed)}
-        acknowledgeRemotionLicense
-        style={{ width: "100%", height: "100%", backgroundColor: "transparent" }}
-      />
-    </div>
   );
 }
 

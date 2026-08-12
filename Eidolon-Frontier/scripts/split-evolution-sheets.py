@@ -201,10 +201,10 @@ def slice_sheet(unit_id: str, stars: int) -> list[Path]:
         raise ValueError(f"{sheet_path.name} does not have transparent corners")
 
     column_count = FIVE_STAR_COLUMNS if stars == 5 and sheet.width == FRAME_SIZE * FIVE_STAR_COLUMNS else DEFAULT_COLUMNS
-    # Rebuilt 5-star sheets use exact fixed 512px cells. Avoid redetecting their
-    # gutters: the combined body/effect anchors are already authored in place.
-    if stars == 5 and sheet.size == (FRAME_SIZE * FIVE_STAR_COLUMNS, FRAME_SIZE * len(ROWS)):
-        columns = [index * FRAME_SIZE for index in range(FIVE_STAR_COLUMNS + 1)]
+    # Rebuilt sheets use exact fixed 512px cells. Avoid redetecting their
+    # gutters at every rarity: the body/effect anchors are already final.
+    if sheet.size == (FRAME_SIZE * column_count, FRAME_SIZE * len(ROWS)):
+        columns = [index * FRAME_SIZE for index in range(column_count + 1)]
         rows = [index * FRAME_SIZE for index in range(len(ROWS) + 1)]
     else:
         columns, rows = find_grid_bounds(sheet, column_count)

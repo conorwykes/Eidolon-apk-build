@@ -5,10 +5,10 @@ the GitHub Actions workflow that packages it as a signed Android APK.
 
 ## Current version
 
-- Game source: `Eidolon-Frontier/` (v58, "Gates of Azura")
+- Game source: `Eidolon-Frontier/` (v59, "Gates of Azura")
 - Android application ID: `com.eidolon.frontier`
-- Android `versionCode`: `58`
-- Android `versionName`: `58.0`
+- Android `versionCode`: `59`
+- Android `versionName`: `59.0`
 - APK workflow: `.github/workflows/Build-apk.yml`
 
 The source in `Eidolon-Frontier/` is authoritative. Future game changes should
@@ -31,19 +31,27 @@ and embeds the result in a small native Android wrapper.
 
 ## Android releases
 
-Run the **Build Eidolon Frontier v58 APK** workflow from GitHub Actions. It:
+Run the **Build Eidolon Frontier v59 APK** workflow from GitHub Actions. It:
 
 1. packages a clean editable-source ZIP for backup;
 2. builds the offline mobile Vite bundle;
 3. wraps it as `com.eidolon.frontier`;
 4. signs it with the repository's existing Android signing secrets;
 5. verifies the APK signature; and
-6. uploads the APK, checksum, and source backup to the `v58` GitHub Release.
+6. uploads the APK, checksum, and source backup to the `v59` GitHub Release.
 
 The signing secret values must never be printed, replaced, removed, or
 committed. Keeping the existing secrets and application ID is required for the
 APK to install as an update over earlier releases.
 
+
+## v59 changes
+
+- Brannock completely redrawn at 2★-5★ with large amber eyes, rounded chestnut hair distinct from Kael, compact shield/earth-gauntlet combat art, and no oversized hammer.
+- Matching Brannock rarity art, home art, battle faces, editable sprite sheets, progressive Burst frames and compatibility assets.
+- Solenne's normal attacks now progress from planted preparation to raised staff/arms and an upward gaze before recovery.
+- Removed attack and Burst VFX overlays; all six named cinematic Burst cut-ins remain.
+- Android version advanced to versionCode 59 / versionName 59.0 while retaining `com.eidolon.frontier` and the existing signing-secret names.
 
 ## v58 changes
 

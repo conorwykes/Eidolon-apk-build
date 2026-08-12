@@ -3347,6 +3347,11 @@ html.game-background-paused *::after{
 .battle-face-portrait.unit-brannock.form-3 img{transform-origin:60% 39%}
 .battle-face-portrait.unit-brannock.form-4 img{transform-origin:57% 34%}
 .battle-face-portrait.unit-brannock.form-5 img{transform-origin:64% 36%}
+.battle-face-portrait.unit-brannock img{transform:scale(1.32)!important;transform-origin:50% 39%!important}
+.battle-face-portrait.unit-brannock.form-2 img,
+.battle-face-portrait.unit-brannock.form-3 img,
+.battle-face-portrait.unit-brannock.form-4 img,
+.battle-face-portrait.unit-brannock.form-5 img{transform-origin:50% 39%!important}
 .battle-face-portrait.unit-zephyra.form-2 img{transform-origin:50% 38%}
 .battle-face-portrait.unit-zephyra.form-3 img{transform-origin:48% 39%}
 .battle-face-portrait.unit-zephyra.form-4 img{transform-origin:50% 44%}
