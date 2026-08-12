@@ -1040,6 +1040,28 @@ emblem{
   visibility:visible!important;
 }
 
+/* The progressive Burst timeline is allowed to draw airborne poses inside its
+   locked 512px canvas.  The unit wrapper stays contact-anchored, so the target,
+   impact and shadow never drift with the artwork.  The last authored frame is
+   the exact idle pose and receives a short planted hold before travel home. */
+.field-unit.active.bursting.attack-stage-release .sprite-burst-frame.active,
+.field-unit.active.bursting.attack-stage-flight .sprite-burst-frame.active{
+  transform:none!important;
+  transform-origin:center bottom!important;
+}
+.field-unit.active.bursting.attack-stage-anchored{
+  transform:translate(var(--contact-x),var(--contact-y)) scale(1.025)!important;
+  transition:none!important;
+  animation:none!important;
+  filter:drop-shadow(0 10px 6px #000c)!important;
+}
+.field-unit.active.bursting.attack-stage-anchored .battle-unit-sprite,
+.field-unit.active.bursting.attack-stage-anchored .sprite-burst-frame.active{
+  transform:none!important;
+  transition:none!important;
+  animation:none!important;
+}
+
 /* Cinematic raster Burst plates. Each hero owns four escalating{position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
 .burst-cinematic{
   position:absolute;
@@ -1140,12 +1162,39 @@ emblem{
 .remotion-stage{position:absolute;z-index:-4;inset:0;overflow:hidden;pointer-events:none;background:#061017}
 .remotion-stage>div,.remotion-stage>div>div{width:100%!important;height:100%!important}
 .stage-poster{z-index:-5!important;opacity:.58;filter:saturate(.9) contrast(1.04) brightness(.66)!important}
-.remotion-burst{position:absolute;z-index:8;inset:0;overflow:hidden;pointer-events:none;mix-blend-mode:screen;isolation:auto}
-.remotion-burst>div,.remotion-burst>div>div{width:100%!important;height:100%!important}
 .kael-remotion-intro{position:absolute;z-index:46;inset:0;overflow:hidden;pointer-events:none;isolation:isolate}
 .kael-remotion-intro>div,.kael-remotion-intro>div>div{width:100%!important;height:100%!important}
-.rpg-burst-preloader{position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
-.rpg-burst-preloader img{position:absolute;width:1px;height:1px}
+
+/* v58 HyperFrames-authored five-star Burst motion language. The runtime layer
+   is SVG/CSS, tied to the same frame, stage and contact coordinates as combat;
+   it never obscures the battlefield with a second video or full-screen plate. */
+.five-star-burst-vfx{position:absolute;z-index:34;inset:0;overflow:visible;pointer-events:none;mix-blend-mode:normal;isolation:isolate;transition:opacity calc(.09s * var(--battle-time-scale)) linear}
+.five-star-burst-vfx>svg{display:block;width:430px;height:355px;overflow:visible;filter:drop-shadow(0 2px 1px #001018e8) drop-shadow(0 0 5px var(--burst-vfx-primary)) saturate(1.28) contrast(1.12)}
+.five-star-vfx-flame-cluster,.five-star-vfx-ribbon,.five-star-vfx-water-swirl,.five-star-vfx-earth-wake,.five-star-vfx-rock-burst,.five-star-vfx-lightning-charge,.five-star-vfx-projectile,.five-star-vfx-heal,.five-star-vfx-sanctuary,.five-star-vfx-void-charge,.five-star-vfx-void-sweep,.five-star-vfx-rift{transform-box:view-box;filter:drop-shadow(0 1px 1px #001018e6) drop-shadow(0 0 6px var(--burst-vfx-primary)) drop-shadow(0 0 11px var(--burst-vfx-secondary))}
+.five-star-vfx-flame-cluster,.five-star-vfx-lightning-charge{transform-origin:0 0}
+.five-star-vfx-ribbon,.five-star-vfx-void-sweep{filter:drop-shadow(0 0 4px var(--burst-vfx-primary))}
+.five-star-vfx-water-swirl,.five-star-vfx-sanctuary{filter:drop-shadow(0 0 5px var(--burst-vfx-primary))}
+.five-star-vfx-rock-burst{filter:drop-shadow(0 3px 2px #21150dbb)}
+.five-star-vfx-mote{filter:drop-shadow(0 0 3px var(--burst-vfx-core))}
+.five-star-vfx-projectile{filter:drop-shadow(0 0 6px var(--burst-vfx-primary)) drop-shadow(0 0 11px var(--burst-vfx-secondary))}
+.five-star-vfx-heal{filter:drop-shadow(0 0 5px var(--burst-vfx-primary))}
+.five-star-vfx-rift{filter:drop-shadow(0 0 7px var(--burst-vfx-secondary))}
+.five-star-burst-impact{position:absolute;z-index:38;width:150px;height:150px;margin:-10px;pointer-events:none;mix-blend-mode:normal;transform:rotate(var(--burst-impact-angle));transform-origin:50% 50%;animation:fiveStarImpactEnvelope calc(.56s * var(--battle-time-scale)) cubic-bezier(.16,.82,.26,1) both}
+.five-star-burst-impact>svg{display:block;width:100%;height:100%;overflow:visible;filter:drop-shadow(0 0 5px var(--burst-vfx-primary))}
+.five-star-impact-shape{fill:var(--burst-vfx-primary);stroke:var(--burst-vfx-core);stroke-width:1.5;transform-origin:center;animation:fiveStarFilledSlash calc(.39s * var(--battle-time-scale)) cubic-bezier(.12,.83,.21,1) both}
+.five-star-impact-hot{fill:var(--burst-vfx-core);transform-origin:center;animation:fiveStarFilledSlash calc(.32s * var(--battle-time-scale)) cubic-bezier(.12,.83,.21,1) both}
+.five-star-impact-void{fill:#120218;stroke:var(--burst-vfx-primary);stroke-width:3;transform-origin:center;animation:fiveStarRiftCollapse calc(.42s * var(--battle-time-scale)) cubic-bezier(.16,.78,.3,1) both}
+.five-star-impact-particle{fill:var(--burst-vfx-primary);stroke:var(--burst-vfx-core);stroke-width:1.2;transform-origin:center;animation:fiveStarParticleBurst calc(.34s * var(--battle-time-scale)) ease-out both}
+.five-star-impact-finisher{z-index:24;scale:1.2;filter:drop-shadow(0 0 8px var(--burst-vfx-secondary))}
+.five-star-impact-brannock .five-star-impact-shape{fill:var(--burst-vfx-secondary);stroke:#efd288}
+.five-star-impact-nyx .five-star-impact-shape{fill:var(--burst-vfx-secondary)}
+.five-star-impact-zephyra{filter:drop-shadow(0 0 6px #fff177)}
+@keyframes fiveStarImpactEnvelope{0%{opacity:0;scale:.36}18%{opacity:1;scale:1.04}64%{opacity:.9;scale:1}100%{opacity:0;scale:1.24}}
+@keyframes fiveStarFilledSlash{0%{opacity:0;scale:.18;rotate:-14deg}30%{opacity:1;scale:1.08;rotate:2deg}100%{opacity:0;scale:.72;rotate:8deg}}
+@keyframes fiveStarRiftCollapse{0%{opacity:0;scale:.35 1.1}35%{opacity:1;scale:1 1}100%{opacity:0;scale:.06 1.12}}
+@keyframes fiveStarParticleBurst{0%{opacity:0;scale:.2}28%{opacity:1;scale:1.15}100%{opacity:0;scale:.7;translate:0 -12px}}
+.reduced-effects .five-star-burst-vfx{filter:none}
+.reduced-effects .five-star-burst-impact{animation-duration:calc(.24s * var(--battle-time-scale));filter:none}
 
 /* The idle reads as a planted breath rather than a deep squat. With the
    bottom origin fixed, the head only dips a couple of pixels at field scale. */
@@ -1816,7 +1865,7 @@ emblem{
 .remotion-attack>div,.remotion-attack>div>div{width:100%!important;height:100%!important;background:transparent!important}
 /* .attack-frame-transition removed - see app/page.tsx */
 .battlefield.no-screen-shake{animation:none!important}
-.reduced-effects .remotion-attack,.reduced-effects .remotion-burst{opacity:.5}
+.reduced-effects .remotion-attack{opacity:.5}
 .reduced-effects .destination-atmosphere{display:none}
 
 /* Zephyra's visible artwork already shares one foot line across both 512px
@@ -1941,29 +1990,6 @@ emblem{
    the number is intentionally absent. */
 .impact-stack::before{content:none!important;display:none!important}
 
-/* The supplied ember-line source spans Kael's complete Burst inside the
-   battlefield only. Screen blending removes its black field while the squad,
-   enemies and combat feedback remain readable underneath. */
-.kael-burst-fullscreen-source{
-  position:absolute;
-  z-index:34;
-  inset:0;
-  width:100%;
-  height:100%;
-  object-fit:cover;
-  object-position:center;
-  opacity:.8;
-  mix-blend-mode:screen;
-  filter:saturate(1.18) contrast(1.08);
-  pointer-events:none;
-  animation:kaelFullscreenSourceSequence calc(3.4s * var(--battle-time-scale)) ease-in-out both;
-}
-.reduced-effects .kael-burst-fullscreen-source{opacity:.3;filter:saturate(.9);animation:none}
-@keyframes kaelFullscreenSourceSequence{
-  0%{opacity:.8}
-  55%{opacity:.5}
-  100%{opacity:.65}
-}
 
 /* Fast synchronized feedback: these visible hit layers use the same clock as
    the attacker pose, Remotion contact and grounded enemy recoil. */
@@ -2606,7 +2632,6 @@ emblem{
 
 /* Keep ordinary contact VFX compact and lower on the enemy body. */
 .remotion-attack{transform:translateY(10px) scale(.88);transform-origin:50% 58%}
-.remotion-burst{transform:translateY(8px) scale(.94);transform-origin:50% 58%}
 .solenne-judgement-beam{bottom:-2px;scale:.9;transform-origin:50% 100%}
 
 @media (max-width:370px){.home-main-story-gate{width:min(46vw,198px);margin-top:5px}}

@@ -1,8 +1,8 @@
-# Gates of Azura v57
+# Gates of Azura v58
 
 Gates of Azura is a portrait-first squad RPG built with React, Vite/Vinext and Remotion-powered battle effects.
 
-This repository contains the complete editable v57 game source plus an **offline Android wrapper** and GitHub Actions workflows that can build an installable APK automatically.
+This repository contains the complete editable v58 game source plus an **offline Android wrapper** and GitHub Actions workflows that can build an installable APK automatically.
 
 ## Run the web game locally
 
@@ -48,17 +48,17 @@ On every push to `main` (or a manual workflow run), GitHub Actions will:
 2. build the offline mobile bundle;
 3. copy the complete game into the Android app;
 4. install the Android 36 SDK;
-5. build an Android debug APK; and
-6. upload `Gates-of-Azura-v57-debug-apk` as a downloadable workflow artifact.
+5. build a permanently signed Android release APK; and
+6. upload `Gates-of-Azura-v58-signed-APK` as a downloadable workflow artifact.
 
 The debug APK does **not** need a hosted website: the game and its assets are bundled inside the APK.
 
 ## Android identity
 
-- Application ID: `game.gatesofazura.app`
-- Debug ID: `game.gatesofazura.app.debug`
-- Version code: `57`
-- Version name: `57.0`
+- Application ID: `com.eidolon.frontier`
+- Debug ID: `com.eidolon.frontier.debug`
+- Version code: `58`
+- Version name: `58.0`
 - Orientation: portrait
 - Minimum Android: API 24 (Android 7.0)
 - Target/compile SDK: API 36
@@ -72,7 +72,7 @@ The debug APK does **not** need a hosted website: the game and its assets are bu
 - `ANDROID_KEY_ALIAS`
 - `ANDROID_KEY_PASSWORD`
 
-A tag such as `v57.0` will also attach the signed APK/AAB to a GitHub Release.
+A tag such as `v58.0` will also attach the signed APK/AAB to a GitHub Release.
 
 **Keep the release keystore and passwords private.** Losing the release key can prevent future updates to the same Play Store app identity.
 
