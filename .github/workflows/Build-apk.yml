@@ -1,12 +1,12 @@
-name: Build Eidolon Frontier v57 APK
+name: Build Eidolon Frontier v58 APK
 
 on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: GitHub Release tag for the v57 artifacts
+        description: GitHub Release tag for the v58 artifacts
         required: true
-        default: v57
+        default: v58
 
 permissions:
   contents: write
@@ -20,7 +20,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Prepare checked-in v57 source and backup ZIP
+      - name: Prepare checked-in v58 source and backup ZIP
         shell: bash
         run: |
           set -euo pipefail
@@ -32,15 +32,15 @@ jobs:
           test -f Eidolon-Frontier/package-lock.json
           test -f Eidolon-Frontier/app/page.tsx
 
-          rm -f Eidolon-Frontier-v57-Source.zip
-          zip -qr Eidolon-Frontier-v57-Source.zip Eidolon-Frontier \
+          rm -f Eidolon-Frontier-v58-Source.zip
+          zip -qr Eidolon-Frontier-v58-Source.zip Eidolon-Frontier \
             -x 'Eidolon-Frontier/node_modules/*' \
                'Eidolon-Frontier/dist/*' \
                'Eidolon-Frontier/mobile-dist/*' \
                'Eidolon-Frontier/.sites-runtime/*' \
                'Eidolon-Frontier/.vinext/*' \
                'Eidolon-Frontier/.wrangler/*'
-          test -s Eidolon-Frontier-v57-Source.zip
+          test -s Eidolon-Frontier-v58-Source.zip
 
           rm -rf source
           mkdir -p source
@@ -54,7 +54,7 @@ jobs:
           cache: npm
           cache-dependency-path: source/Eidolon-Frontier/package-lock.json
 
-      - name: Build v57 as an offline mobile web bundle
+      - name: Build v58 as an offline mobile web bundle
         shell: bash
         working-directory: source/Eidolon-Frontier
         run: |
@@ -236,8 +236,8 @@ jobs:
                   applicationId 'com.eidolon.frontier'
                   minSdk 24
                   targetSdk 35
-                  versionCode 57
-                  versionName '57.0'
+                  versionCode 58
+                  versionName '58.0'
               }
 
               signingConfigs {
@@ -391,7 +391,7 @@ jobs:
           }
           JAVA
 
-      - name: Build signed v57 release APK
+      - name: Build signed v58 release APK
         shell: bash
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -407,21 +407,21 @@ jobs:
           set -euo pipefail
           APKSIGNER="$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner"
           "$APKSIGNER" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
-          cp app/build/outputs/apk/release/app-release.apk Eidolon-Frontier-v57.apk
-          sha256sum Eidolon-Frontier-v57.apk > Eidolon-Frontier-v57.apk.sha256
+          cp app/build/outputs/apk/release/app-release.apk Eidolon-Frontier-v58.apk
+          sha256sum Eidolon-Frontier-v58.apk > Eidolon-Frontier-v58.apk.sha256
 
-      - name: Upload v57 APK and editable-source backup
+      - name: Upload v58 APK and editable-source backup
         uses: actions/upload-artifact@v4
         with:
-          name: Eidolon-Frontier-v57-Release
+          name: Eidolon-Frontier-v58-Release
           path: |
-            Eidolon-Frontier-v57.apk
-            Eidolon-Frontier-v57.apk.sha256
-            Eidolon-Frontier-v57-Source.zip
+            Eidolon-Frontier-v58.apk
+            Eidolon-Frontier-v58.apk.sha256
+            Eidolon-Frontier-v58-Source.zip
           if-no-files-found: error
           compression-level: 0
 
-      - name: Attach v57 APK and source backup to GitHub Release
+      - name: Attach v58 APK and source backup to GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -432,14 +432,14 @@ jobs:
           if ! gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             gh release create "${RELEASE_TAG}" \
               --repo "${GITHUB_REPOSITORY}" \
-              --title "Eidolon Frontier v57" \
-              --notes "Signed v57 APK with the rarity-aware evolution sprite overhaul, per-star battlefield sizing/grounding/facing fixes, single-target normal attacks, and editable-source backup."
+              --title "Eidolon Frontier v58" \
+              --notes "Signed v58 APK with progressive rarity-scaled Burst animation sheets, visible frame-synchronised five-star elemental VFX, the restored cinematic Burst intro, and a complete editable-source backup."
           fi
 
-          echo "Uploading v57 artifacts to release tag: ${RELEASE_TAG}"
+          echo "Uploading v58 artifacts to release tag: ${RELEASE_TAG}"
           gh release upload "${RELEASE_TAG}" \
-            Eidolon-Frontier-v57.apk \
-            Eidolon-Frontier-v57.apk.sha256 \
-            Eidolon-Frontier-v57-Source.zip \
+            Eidolon-Frontier-v58.apk \
+            Eidolon-Frontier-v58.apk.sha256 \
+            Eidolon-Frontier-v58-Source.zip \
             --repo "${GITHUB_REPOSITORY}" \
             --clobber

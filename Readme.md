@@ -5,10 +5,10 @@ the GitHub Actions workflow that packages it as a signed Android APK.
 
 ## Current version
 
-- Game source: `Eidolon-Frontier/` (v57, "Gates of Azura")
+- Game source: `Eidolon-Frontier/` (v58, "Gates of Azura")
 - Android application ID: `com.eidolon.frontier`
-- Android `versionCode`: `57`
-- Android `versionName`: `57.0`
+- Android `versionCode`: `58`
+- Android `versionName`: `58.0`
 - APK workflow: `.github/workflows/Build-apk.yml`
 
 The source in `Eidolon-Frontier/` is authoritative. Future game changes should
@@ -31,19 +31,28 @@ and embeds the result in a small native Android wrapper.
 
 ## Android releases
 
-Run the **Build Eidolon Frontier v57 APK** workflow from GitHub Actions. It:
+Run the **Build Eidolon Frontier v58 APK** workflow from GitHub Actions. It:
 
 1. packages a clean editable-source ZIP for backup;
 2. builds the offline mobile Vite bundle;
 3. wraps it as `com.eidolon.frontier`;
 4. signs it with the repository's existing Android signing secrets;
 5. verifies the APK signature; and
-6. uploads the APK, checksum, and source backup to the `v57` GitHub Release.
+6. uploads the APK, checksum, and source backup to the `v58` GitHub Release.
 
 The signing secret values must never be printed, replaced, removed, or
 committed. Keeping the existing secrets and application ID is required for the
 APK to install as an update over earlier releases.
 
+
+## v58 changes
+
+- Progressive Burst sheets for all six units: 6 frames at 2★, 8 at 3★, 12 at 4★, and longer unit-specific 5★ sequences.
+- Anticipation, attacks, leaps, contacts and regression now progress through authored poses before returning to the fixed foot anchor.
+- The named cinematic Burst intro remains; the older generic Burst overlay and Kael's looping fullscreen ember playover were removed.
+- New visible 5★ elemental effects use filled slashes, water swirls, thrown rocks, branching lightning, healing spirals and a collapsing void rift.
+- Burst VFX are synchronized to sprite frames and target contact points, with solid compositing and stronger contrast on bright stages.
+- Android version advanced to versionCode 58 / versionName 58.0 while retaining `com.eidolon.frontier` and the existing signing-secret names.
 
 ## v57 changes
 

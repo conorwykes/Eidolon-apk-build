@@ -1,4 +1,4 @@
-const CACHE = "gates-of-azura-v57";
+const CACHE = "gates-of-azura-v58";
 const EVOLUTION_UNITS = ["kael", "lyra", "brannock", "zephyra", "solenne", "nyx"];
 const EVOLUTION_STARS = [2, 3, 4, 5];
 const RARITY_UI_ART = EVOLUTION_UNITS.flatMap((unit) => EVOLUTION_STARS.flatMap((stars) => [

@@ -1,0 +1,46 @@
+plugins {
+    id 'com.android.application'
+}
+
+def keystorePath = System.getenv('GOA_KEYSTORE')
+def storePasswordValue = System.getenv('GOA_STORE_PASSWORD')
+def keyAliasValue = System.getenv('GOA_KEY_ALIAS')
+def keyPasswordValue = System.getenv('GOA_KEY_PASSWORD')
+def hasReleaseSigning = keystorePath && storePasswordValue && keyAliasValue && keyPasswordValue
+
+android {
+    namespace 'game.gatesofazura.app'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.eidolon.frontier'
+        minSdk 24
+        targetSdk 36
+        versionCode 58
+        versionName '58.0'
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(keystorePath)
+                storePassword storePasswordValue
+                keyAlias keyAliasValue
+                keyPassword keyPasswordValue
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix '.debug'
+            versionNameSuffix '-debug'
+        }
+        release {
+            minifyEnabled false
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+}

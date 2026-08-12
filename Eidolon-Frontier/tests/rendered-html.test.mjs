@@ -39,18 +39,15 @@ test("renders development preview metadata", async (t) => {
   assert.match(await response.text(), developmentPreviewMeta);
 });
 
-test("ships every cinematic Burst VFX phase", async () => {
-  const units = ["kael", "lyra", "brannock", "zephyra", "solenne", "nyx"];
-  for (const unit of units) {
-    for (let phase = 1; phase <= 4; phase += 1) {
-      const asset = new URL(`../public/effects/bursts/${unit}/phase-${phase}.webp`, import.meta.url);
-      const metadata = await stat(asset);
-      assert.ok(metadata.size > 30_000, `${unit} phase ${phase} should contain production VFX artwork`);
-    }
-  }
-
-  const kaelFullscreenSource = await stat(new URL("../public/effects/bursts/kael/fullscreen-embers.mp4", import.meta.url));
-  assert.ok(kaelFullscreenSource.size > 1_000_000, "Kael should ship the supplied full-screen ember source");
+test("keeps the named Burst cinematic while removing Kael's video playover", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const player = await readFile(new URL("../app/components/BattleRemotion.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(source, /<BurstIntroOverlay/);
+  assert.match(player, /component=\{KaelFireBurstIntro\}/);
+  assert.doesNotMatch(source, /fullscreen-embers\.mp4/);
+  assert.doesNotMatch(source, /kael-burst-fullscreen-source/);
+  assert.doesNotMatch(styles, /\.kael-burst-fullscreen-source\{/);
 });
 
 test("uses exact per-hit combat modifiers and continuous Burst animation", async () => {
@@ -60,7 +57,9 @@ test("uses exact per-hit combat modifiers and continuous Burst animation", async
   assert.match(source, /const SPARK_DAMAGE_MULTIPLIER = 1\.25;/);
   assert.match(source, /requestAnimationFrame\(\(\) => \{/);
   assert.doesNotMatch(source, /function BurstAnimationCanvas/);
-  assert.match(source, /<BurstRemotionOverlay/);
+  assert.match(source, /<FiveStarBurstVfx/);
+  assert.match(source, /<FiveStarBurstImpactVfx/);
+  assert.doesNotMatch(source, /<BurstRemotionOverlay/);
   assert.match(source, /lockedTargetIds\.includes\(enemy\.instanceId\)/);
 });
 
@@ -210,7 +209,30 @@ test("cycles only locked 5-star idle sheets with a natural baked VFX loop", asyn
   }
 });
 
-test("embeds authored Remotion Burst timelines and moving battle stages", async () => {
+test("uses rarity-scaled progressive Burst timelines and an anchored recovery", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const manifest = JSON.parse(await readFile(new URL("../public/sprites/units/progressive-burst-sources/progressive-burst-manifest.json", import.meta.url), "utf8"));
+  const expectedFiveStar = { kael: 16, lyra: 16, brannock: 14, zephyra: 20, solenne: 14, nyx: 22 };
+
+  assert.deepEqual(manifest.rarityFrameCounts["5"], expectedFiveStar);
+  for (const form of manifest.forms) {
+    assert.equal(form.finalFrameMatchesIdlePixels, true, `${form.unit} ${form.stars}★ must return to its foot anchor`);
+    assert.ok(form.frameCount > 4, `${form.unit} ${form.stars}★ Burst must exceed the four-frame normal attack`);
+    for (let frame = 1; frame <= form.frameCount; frame += 1) {
+      const asset = new URL(`../public/sprites/units/${form.unit}-evolution/frames/${form.stars}/burst-${frame}.webp`, import.meta.url);
+      assert.ok((await stat(asset)).size > 1000, `${form.unit} ${form.stars}★ Burst frame ${frame} is missing`);
+    }
+  }
+
+  assert.match(source, /PROGRESSIVE_BURST_FRAME_COUNTS/);
+  assert.match(source, /const burstOpeningFrames =/);
+  assert.match(source, /const burstRecoveryFrames =/);
+  assert.match(source, /stage: frame === battleSprites\.burst\.length - 1 \? "anchored" : "recover"/);
+  assert.match(styles, /attack-stage-anchored/);
+});
+
+test("keeps Remotion intros, moving stages and normal impacts while replacing Burst VFX", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const player = await readFile(new URL("../app/components/BattleRemotion.tsx", import.meta.url), "utf8");
   const timing = await readFile(new URL("../game/battle-timing.ts", import.meta.url), "utf8");
@@ -227,11 +249,11 @@ test("embeds authored Remotion Burst timelines and moving battle stages", async 
   assert.match(source, /getBattleDuration\(milliseconds, battleSpeed\)/);
   assert.match(source, /"--battle-time-scale": getBattleTimeScale\(battleSpeed\)/);
   assert.match(source, /<AnimatedBattleStage/);
-  assert.match(source, /<BurstRemotionOverlay/);
+  assert.match(source, /<BurstIntroOverlay/);
+  assert.match(source, /<FiveStarBurstVfx/);
+  assert.doesNotMatch(source, /<BurstRemotionOverlay/);
   assert.match(source, /enemy-status-rail/);
-  assert.match(compositions, /id="BurstNyx"/);
   assert.match(compositions, /id="StageReliquary"/);
-  assert.match(effects, /getBurstDurationInFrames/);
   assert.match(effects, /const RPG_EFFECT_CELL = 80/);
   assert.match(effects, /AttackImpactComposition/);
   assert.match(player, /AttackImpactOverlay/);
@@ -423,55 +445,71 @@ test("moves Zephyra's bow lightning up to hand height instead of her waist", asy
 
 test("collapses three overlapping burst VFX systems down to one", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  const vfx = await readFile(new URL("../remotion/BattleVfx.tsx", import.meta.url), "utf8");
+  const vfx = await readFile(new URL("../app/components/FiveStarBurstVfx.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
   // Previously every burst rendered THREE full independent VFX systems at
   // once: a CSS .burst-signature flourish, a from-scratch Canvas2D 88-particle
   // draw loop (BurstAnimationCanvas), and the Remotion composition. Only the
-  // Remotion layer should remain.
+  // Only the frame/contact-synchronised five-star layer should mount.
   assert.doesNotMatch(page, /function BurstAnimationCanvas/);
   assert.doesNotMatch(page, /className=\{`burst-signature/);
-  assert.match(page, /<BurstRemotionOverlay/);
+  assert.doesNotMatch(page, /<BurstRemotionOverlay/);
+  assert.match(page, /<FiveStarBurstVfx/);
+  assert.match(page, /<FiveStarBurstImpactVfx/);
   assert.doesNotMatch(styles, /\.burst-signature\{/);
   assert.doesNotMatch(styles, /\.burst-animation-canvas\{/);
-
-  // The informational "FINAL" callout is UI, not particle VFX, and must survive.
-  assert.match(page, /className="burst-finisher-mark"/);
-  assert.match(styles, /\.burst-finisher-mark\{/);
+  assert.doesNotMatch(page, /fullscreen-embers\.mp4/);
 
   // The battlefield camera shake and stage flash used by .fx-burst are a
   // different, still-active system and must not have been caught by the sweep.
   assert.match(styles, /\.fx-burst \.battlefield\{animation:burstCameraShake/);
   assert.match(styles, /\.fx-burst \.stage-background\{animation:burstStageFlash/);
 
-  // The raster charge/hit/finisher sprite strips inside the burst composition
-  // are gone, replaced by new procedural layers.
-  assert.doesNotMatch(vfx, /name=\{`\$\{unitId\} charge glow`\}/);
-  assert.doesNotMatch(vfx, /name=\{`\$\{unitId\} hit glow`\}/);
-  assert.doesNotMatch(vfx, /name=\{`\$\{unitId\} finisher glow`\}/);
-  assert.match(vfx, /function BurstChargeLayer\(/);
-  assert.match(vfx, /<BurstChargeLayer/);
-  assert.match(vfx, /function BurstFinisherFlourish\(/);
-  assert.match(vfx, /<BurstFinisherFlourish/);
-  assert.match(vfx, /<ElementalBurstLayer/);
+  // Each unit owns a distinct persistent motion drawing and a real per-hit
+  // contact drawing rather than a detached, time-only overlay.
+  for (const component of ["KaelMotion", "LyraMotion", "BrannockMotion", "ZephyraMotion", "SolenneMotion", "NyxMotion"]) {
+    assert.match(vfx, new RegExp(`function ${component}\\(`));
+  }
+  for (const filledEffect of [
+    "five-star-vfx-flame-cluster",
+    "five-star-vfx-water-swirl",
+    "five-star-vfx-rock-burst",
+    "five-star-vfx-lightning-charge",
+    "five-star-vfx-sanctuary",
+    "five-star-vfx-void-sweep",
+  ]) {
+    assert.match(vfx, new RegExp(filledEffect));
+  }
+  assert.doesNotMatch(vfx, /five-star-vfx-core-line|five-star-vfx-echo-line/);
+  assert.match(vfx, /five-star-impact-shape/);
+  assert.match(vfx, /data-burst-vfx-frame=\{frame \+ 1\}/);
+  assert.match(vfx, /data-burst-vfx-progress=\{progress\.toFixed\("\.3f"\)|data-burst-vfx-progress=\{progress\.toFixed\(3\)\}/);
+  assert.match(vfx, /data-burst-impact-hit=\{hitIndex\}/);
+  assert.match(styles, /\.five-star-burst-vfx\{/);
+  assert.match(styles, /\.five-star-burst-impact\{/);
+  assert.match(styles, /\.five-star-burst-vfx\{[^}]*z-index:34/);
+  assert.match(styles, /\.five-star-burst-vfx\{[^}]*mix-blend-mode:normal/);
+  assert.match(vfx, /function ImpactArtwork\(/);
+  assert.match(vfx, /five-star-impact-finisher/);
+  assert.doesNotMatch(vfx, /fullscreen-embers\.mp4/);
 
   // Normal-attack VFX (a separate composition, AttackImpactComposition) must
   // be completely untouched by the burst-specific cleanup.
-  assert.match(vfx, /normal-hit glow/);
-  assert.match(vfx, /normal-hit element/);
+  const normalVfx = await readFile(new URL("../remotion/BattleVfx.tsx", import.meta.url), "utf8");
+  assert.match(normalVfx, /normal-hit glow/);
+  assert.match(normalVfx, /normal-hit element/);
 });
 
 test("gives each unit's burst finisher its own large-scale signature shape", async () => {
-  const vfx = await readFile(new URL("../remotion/BattleVfx.tsx", import.meta.url), "utf8");
-  const flourish = vfx.slice(vfx.indexOf("function BurstFinisherFlourish("));
+  const vfx = await readFile(new URL("../app/components/FiveStarBurstVfx.tsx", import.meta.url), "utf8");
+  const artwork = vfx.slice(vfx.indexOf("function ImpactArtwork("));
 
-  for (const unit of ["kael", "lyra", "brannock", "zephyra", "solenne"]) {
-    assert.match(flourish, new RegExp(`case "${unit}":`), `${unit} needs its own finisher shape`);
+  for (const unit of ["kael", "lyra", "brannock", "zephyra", "nyx"]) {
+    assert.match(artwork, new RegExp(`unitId === "${unit}"`), `${unit} needs its own contact shape`);
   }
-  // nyx is the switch's default case (a collapsing rift resolving into a
-  // black sun), so it is checked by content rather than by a case label.
-  assert.match(flourish, /a collapsing rift that resolves into a small black sun/);
+  assert.match(artwork, /if \(unitId === "solenne"\) return null/);
+  assert.match(artwork, /finisher \? "five-star-impact-finisher"/);
 });
 
 test("shows the full unit figure in the archive hero instead of cropping legs off", async () => {
