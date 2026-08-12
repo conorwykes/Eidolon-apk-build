@@ -157,68 +157,46 @@
     },
     {
       "unit": "brannock",
-      "bodySource": "public/sprites/units/idle-vfx-sources/brannock-5-idle-body.png",
-      "bodySha256": "58dd6fa43e372181dff5edbc77ef17b7ee3a73871ecb39e7f04caa3ff4ace7e7",
-      "bodyAnchorPolicy": "fixed horizontal centre and foot line; bottom-anchored 1.2% maximum knee compression",
+      "sourceMode": "authored combined character-and-element frames",
+      "bodyAnchorPolicy": "fixed 512px cells and shared foot line across six progression/recovery frames",
       "bodyFrameBounds": [
         [
-          175,
-          98,
-          455,
-          455
+          114,
+          116,
+          398,
+          454
         ],
         [
-          175,
-          99,
-          455,
-          455
+          115,
+          146,
+          398,
+          454
         ],
         [
-          175,
-          100,
-          455,
-          455
+          114,
+          171,
+          398,
+          454
         ],
         [
-          175,
-          102,
-          455,
-          455
+          112,
+          192,
+          401,
+          454
         ],
         [
-          175,
-          100,
-          455,
-          455
+          110,
+          171,
+          401,
+          454
         ],
         [
-          175,
-          99,
-          455,
-          455
+          116,
+          143,
+          397,
+          454
         ]
       ],
-      "bodyScaleY": [
-        1.0,
-        0.997,
-        0.993,
-        0.988,
-        0.993,
-        0.997
-      ],
-      "vfxSource": "public/sprites/units/idle-vfx-sources/brannock-5-idle-vfx-6phase-alpha.png",
-      "vfxAlphaWeights": [
-        2693169,
-        4649705,
-        6890234,
-        11335718,
-        5671251,
-        3275659
-      ],
-      "vfxAnchor": {
-        "centerX": 256,
-        "groundY": 475
-      },
       "phaseOrder": [
         "restrained",
         "rising",

@@ -76,7 +76,7 @@ jobs:
       - name: Upload release files
         uses: actions/upload-artifact@v5
         with:
-          name: Gates-of-Azura-v58-release
+          name: Gates-of-Azura-v59-release
           path: |
             android/app/build/outputs/apk/release/app-release.apk
             android/app/build/outputs/bundle/release/app-release.aab

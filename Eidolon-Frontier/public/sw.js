@@ -1,4 +1,4 @@
-const CACHE = "gates-of-azura-v58";
+const CACHE = "gates-of-azura-v59";
 const EVOLUTION_UNITS = ["kael", "lyra", "brannock", "zephyra", "solenne", "nyx"];
 const EVOLUTION_STARS = [2, 3, 4, 5];
 const RARITY_UI_ART = EVOLUTION_UNITS.flatMap((unit) => EVOLUTION_STARS.flatMap((stars) => [
@@ -12,8 +12,6 @@ const EVOLUTION_SPRITES = EVOLUTION_UNITS.flatMap((unit) => EVOLUTION_STARS.flat
 ));
 const EXTENDED_BURST_SPRITES = Object.entries({ kael: 12, lyra: 10, brannock: 8, zephyra: 16, solenne: 8, nyx: 18 })
   .flatMap(([unit, hitCount]) => Array.from({ length: hitCount - 6 }, (_, index) => `/sprites/units/burst/${unit}-burst-${index + 7}.webp`));
-const CINEMATIC_BURST_VFX = ["kael", "lyra", "brannock", "zephyra", "solenne", "nyx"]
-  .flatMap((unit) => Array.from({ length: 4 }, (_, index) => `/effects/bursts/${unit}/phase-${index + 1}.webp`));
 const CORE = [
   "/",
   "/manifest.webmanifest",
@@ -138,7 +136,6 @@ const CORE = [
   "/sprites/units/burst/nyx-burst-5.webp",
   "/sprites/units/burst/nyx-burst-6.webp",
   ...EXTENDED_BURST_SPRITES,
-  ...CINEMATIC_BURST_VFX,
   ...RARITY_UI_ART,
   ...EVOLUTION_SPRITES,
   "/enemies/ruinback.webp",

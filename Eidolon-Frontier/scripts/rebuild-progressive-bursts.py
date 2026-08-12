@@ -134,13 +134,13 @@ def save_editable_sheet(unit_id: str, stars: int, frames: list[Image.Image]) -> 
 def build_form(unit_id: str, stars: int) -> dict[str, object]:
     output_root = runtime_root(unit_id, stars)
     anchored_idle = load_runtime(output_root / "idle-1.webp")
-    if stars == 5:
+    if stars == 5 and unit_id != "brannock":
         source_path = SOURCE_ROOT / f"{unit_id}-5-burst-8phase-alpha.png"
         keys = split_grid(source_path, 4, 2)
         count = FIVE_STAR_COUNTS[unit_id]
     else:
         keys = [load_runtime(output_root / f"burst-{index}.webp") for index in range(1, 5)]
-        count = RARITY_COUNTS[stars]
+        count = FIVE_STAR_COUNTS[unit_id] if stars == 5 else RARITY_COUNTS[stars]
 
     # Two recovery keys ease the signature effect down before the exact idle
     # anchor returns.  Higher rarities get more interpolated poses between all
