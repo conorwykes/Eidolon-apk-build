@@ -1040,7 +1040,14 @@ emblem{
 }
 .field-unit.active:not(.attack-stage-approach) .field-unit-shadow{
   opacity:.9!important;
-  transform:scaleX(1.24)!important;
+  /* The character reaches --contact-y in full to visually connect with a
+     target standing at a different formation height/depth, but a shadow
+     that rode along for the whole distance reads as "floating in the sky"
+     rather than a grounded strike or an intentional jump. Countering most
+     of that vertical travel keeps the shadow near the unit's own ground
+     spot; only ~18% of the reach still nudges it, so it still settles
+     under wherever the unit actually lands once the attack ends. */
+  transform:translateY(calc(var(--contact-y) * -0.82)) scaleX(1.24)!important;
 }
 .field-unit.active:not(.attack-stage-approach) .field-unit-aura{
   opacity:.34!important;
