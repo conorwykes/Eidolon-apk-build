@@ -735,11 +735,10 @@ rotation{--burst-origin-x:43%;--burst-origin-y:55%;--burst-rotation:0deg;--burst
 .burst-cut-in>.burst-key-art{left:0;bottom:0;width:61%;height:100%;object-fit:cover;object-position:50% 18%;filter:saturate(1.06) contrast(1.04) drop-shadow(10px 4px 11px #000);animation:burstKeyArtIn calc(.24s * var(--battle-time-scale)) cubic-bezier(.15,.85,.2,1) both;mask-image:linear-gradient(90deg,#000 0 74%,transparent 100%)}
 .burst-cut-in>div{right:12px;width:220px}
 .field-unit.active{transition:transform calc(.15s * var(--battle-time-scale)) cubic-bezier(.18,.8,.2,1),filter calc(.12s * var(--battle-time-scale)) ease!important}
-.field-unit.active.attack-stage-approach{transform:translate(var(--contact-x),var(--contact-y)) scale(1.04)!important}
 .field-unit.active.attack-stage-windup{transform:translate(calc(var(--contact-x) + 5px),calc(var(--contact-y) - 2px)) scale(1.06)!important}
 .field-unit.active.attack-stage-impact{transform:translate(calc(var(--contact-x) - 7px),calc(var(--contact-y) + 1px)) scale(1.14)!important;transition-duration:calc(.075s * var(--battle-time-scale))!important}
 .field-unit.active.bursting.attack-stage-impact{transform:translate(calc(var(--contact-x) - 10px),var(--contact-y)) scale(1.22)!important}
-.field-unit.active.attack-stage-return{transform:translate(0,0) scale(1)!important;transition-duration:calc(.14s * var(--battle-time-scale))!important;filter:drop-shadow(0 9px 5px #0009)!important}
+.field-unit.active.attack-stage-return{transition-duration:calc(.14s * var(--battle-time-scale))!important;filter:drop-shadow(0 9px 5px #0009)!important}
 .field-unit.active .battle-unit-sprite,.field-unit.active.bursting .battle-unit-sprite{animation:none!important;transition:transform calc(.08s * var(--battle-time-scale)) ease-out}
 .field-unit.active.attack-stage-windup .battle-unit-sprite{transform:translate(var(--strike-x),var(--strike-y)) rotate(var(--strike-rotate)) scale(.97)}
 .field-unit.active.attack-stage-impact .battle-unit-sprite{transform:translateX(-4px) rotate(-.6deg) scale(1.045)}
@@ -770,17 +769,21 @@ rotation{--burst-origin-x:43%;--burst-origin-y:55%;--burst-rotation:0deg;--burst
 .field-unit-shadow{left:15%;right:15%;bottom:1px;height:10px;background:#000d;filter:blur(3px);transform:scaleX(1.16)}
 .field-unit-aura{left:19%;right:19%;bottom:6px;height:29px;opacity:.34;box-shadow:0 0 9px #55dfd444}
 .field-unit.active{animation:none!important;transform-origin:center bottom;will-change:transform}
-.field-unit.active.attack-stage-approach{
-  animation:groundApproach calc(.18s * var(--battle-time-scale)) cubic-bezier(.16,.82,.2,1) both!important;
-  transform:translate(var(--contact-x),var(--contact-y)) scale(1.025)!important;
-}
+/* Approach/return glide over --contact-x/y with the base .field-unit.active
+   transition (defined further up) rather than a keyframe @animation: a
+   keyframe animation can't reliably tween translate(var(--contact-x)) since
+   an unregistered custom property is an opaque token to the animation
+   engine, not a numeric length, so it was flipping discretely near the end
+   of the keyframe instead of interpolating — which is why units appeared to
+   teleport to and from the enemy instead of visibly closing the gap. A
+   transition resolves the var() to its computed pixel value first, so it
+   tweens correctly between whatever the unit's current transform is and
+   this stage's literal target. */
+.field-unit.active.attack-stage-approach{transform:translate(var(--contact-x),var(--contact-y)) scale(1.025)!important}
 .field-unit.active.attack-stage-windup{transform:translate(calc(var(--contact-x) + 4px),calc(var(--contact-y) - 1px)) scale(1.035)!important}
 .field-unit.active.attack-stage-impact{transform:translate(calc(var(--contact-x) - 6px),calc(var(--contact-y) + 1px)) scale(1.08)!important}
 .field-unit.active.bursting.attack-stage-impact{transform:translate(calc(var(--contact-x) - 9px),var(--contact-y)) scale(1.14)!important}
-.field-unit.active.attack-stage-return{
-  animation:groundReturn calc(.14s * var(--battle-time-scale)) cubic-bezier(.42,0,.4,1) both!important;
-  transform:translate(0,0) scale(1)!important;
-}
+.field-unit.active.attack-stage-return{transform:translate(0,0) scale(1)!important}
 .field-unit.active.attack-stage-approach .battle-unit-sprite{animation:groundFootwork calc(.07s * var(--battle-time-scale)) steps(2,end) infinite!important}
 .field-unit.active.attack-stage-approach .field-unit-shadow{animation:groundShadowRun calc(.07s * var(--battle-time-scale)) steps(2,end) infinite!important}
 .field-unit.active.attack-stage-windup .field-unit-shadow,.field-unit.active.attack-stage-impact .field-unit-shadow{opacity:.9;transform:scaleX(1.28)}
@@ -3381,7 +3384,7 @@ html.game-background-paused *::after{
 .battle-face-portrait.unit-solenne.form-2 img{transform-origin:52% 33%}
 .battle-face-portrait.unit-solenne.form-3 img{transform-origin:53% 34%}
 .battle-face-portrait.unit-solenne.form-4 img{transform-origin:50% 39%}
-.battle-face-portrait.unit-solenne.form-5 img{transform-origin:52% 42%}
+.battle-face-portrait.unit-solenne.form-5 img{transform-origin:49% 38%}
 .battle-face-portrait.unit-nyx.form-2 img{transform-origin:51% 42%}
 .battle-face-portrait.unit-nyx.form-3 img{transform-origin:50% 43%}
 .battle-face-portrait.unit-nyx.form-4 img{transform-origin:49% 36%}
