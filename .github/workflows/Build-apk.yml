@@ -329,6 +329,17 @@ jobs:
 
                   webView = new WebView(this);
                   webView.setBackgroundColor(Color.BLACK);
+                  // Packaged sprite/VFX assets are served from a fixed local
+                  // /assets/ URL space, and successive releases routinely
+                  // replace the pixels behind an unchanged filename (e.g. a
+                  // rebuilt Burst frame at the same path). WebView's HTTP
+                  // cache does not know the APK was updated, so without a
+                  // flush here it can keep serving a previous release's
+                  // cached bytes for some frames while others load fresh,
+                  // splicing old and new art together mid-animation. Clearing
+                  // on every launch costs nothing extra since these loads
+                  // never touch the network to begin with.
+                  webView.clearCache(true);
                   webView.setWebChromeClient(new android.webkit.WebChromeClient());
                   webView.setWebViewClient(new WebViewClientCompat() {
                       @Override
@@ -348,7 +359,7 @@ jobs:
                   settings.setDomStorageEnabled(true);
                   settings.setDatabaseEnabled(true);
                   settings.setMediaPlaybackRequiresUserGesture(false);
-                  settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+                  settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
                   settings.setAllowFileAccess(false);
                   settings.setAllowContentAccess(false);
                   settings.setAllowFileAccessFromFileURLs(false);
