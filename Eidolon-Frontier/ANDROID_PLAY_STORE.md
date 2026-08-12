@@ -1,4 +1,4 @@
-# Gates of Azura — Android / Google Play handoff (v57)
+# Gates of Azura — Android / Google Play handoff (v58)
 
 The repository now contains an **offline native Android wrapper** under `android/`.
 
@@ -6,10 +6,10 @@ The wrapper does not load the game from a website. GitHub Actions first builds a
 
 ## Android configuration
 
-- package/application ID: `game.gatesofazura.app`
-- debug application ID: `game.gatesofazura.app.debug`
-- version code: `56`
-- version name: `57.0`
+- package/application ID: `com.eidolon.frontier`
+- debug application ID: `com.eidolon.frontier.debug`
+- version code: `58`
+- version name: `58.0`
 - minimum SDK: API 24
 - target/compile SDK: API 36
 - portrait orientation

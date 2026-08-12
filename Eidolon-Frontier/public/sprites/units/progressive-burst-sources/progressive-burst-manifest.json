@@ -1,0 +1,210 @@
+{
+  "description": "Progressive rarity-scaled Burst timelines; final frame is the exact anchored idle pose.",
+  "rarityFrameCounts": {
+    "2": 6,
+    "3": 8,
+    "4": 12,
+    "5": {
+      "kael": 16,
+      "lyra": 16,
+      "brannock": 14,
+      "zephyra": 20,
+      "solenne": 14,
+      "nyx": 22
+    }
+  },
+  "forms": [
+    {
+      "unit": "kael",
+      "stars": 2,
+      "frameCount": 6,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/kael-2-burst-6frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": false
+    },
+    {
+      "unit": "kael",
+      "stars": 3,
+      "frameCount": 8,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/kael-3-burst-8frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": false
+    },
+    {
+      "unit": "kael",
+      "stars": 4,
+      "frameCount": 12,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/kael-4-burst-12frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": false
+    },
+    {
+      "unit": "kael",
+      "stars": 5,
+      "frameCount": 16,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/kael-5-burst-16frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": true
+    },
+    {
+      "unit": "lyra",
+      "stars": 2,
+      "frameCount": 6,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/lyra-2-burst-6frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": false
+    },
+    {
+      "unit": "lyra",
+      "stars": 3,
+      "frameCount": 8,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/lyra-3-burst-8frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": false
+    },
+    {
+      "unit": "lyra",
+      "stars": 4,
+      "frameCount": 12,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/lyra-4-burst-12frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": false
+    },
+    {
+      "unit": "lyra",
+      "stars": 5,
+      "frameCount": 16,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/lyra-5-burst-16frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": true
+    },
+    {
+      "unit": "brannock",
+      "stars": 2,
+      "frameCount": 6,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/brannock-2-burst-6frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": false
+    },
+    {
+      "unit": "brannock",
+      "stars": 3,
+      "frameCount": 8,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/brannock-3-burst-8frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": false
+    },
+    {
+      "unit": "brannock",
+      "stars": 4,
+      "frameCount": 12,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/brannock-4-burst-12frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": false
+    },
+    {
+      "unit": "brannock",
+      "stars": 5,
+      "frameCount": 14,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/brannock-5-burst-14frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": true
+    },
+    {
+      "unit": "zephyra",
+      "stars": 2,
+      "frameCount": 6,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/zephyra-2-burst-6frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": false
+    },
+    {
+      "unit": "zephyra",
+      "stars": 3,
+      "frameCount": 8,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/zephyra-3-burst-8frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": false
+    },
+    {
+      "unit": "zephyra",
+      "stars": 4,
+      "frameCount": 12,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/zephyra-4-burst-12frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": false
+    },
+    {
+      "unit": "zephyra",
+      "stars": 5,
+      "frameCount": 20,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/zephyra-5-burst-20frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": true
+    },
+    {
+      "unit": "solenne",
+      "stars": 2,
+      "frameCount": 6,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/solenne-2-burst-6frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": false
+    },
+    {
+      "unit": "solenne",
+      "stars": 3,
+      "frameCount": 8,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/solenne-3-burst-8frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": false
+    },
+    {
+      "unit": "solenne",
+      "stars": 4,
+      "frameCount": 12,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/solenne-4-burst-12frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": false
+    },
+    {
+      "unit": "solenne",
+      "stars": 5,
+      "frameCount": 14,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/solenne-5-burst-14frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": true
+    },
+    {
+      "unit": "nyx",
+      "stars": 2,
+      "frameCount": 6,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/nyx-2-burst-6frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": false
+    },
+    {
+      "unit": "nyx",
+      "stars": 3,
+      "frameCount": 8,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/nyx-3-burst-8frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": false
+    },
+    {
+      "unit": "nyx",
+      "stars": 4,
+      "frameCount": 12,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/nyx-4-burst-12frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": false
+    },
+    {
+      "unit": "nyx",
+      "stars": 5,
+      "frameCount": 22,
+      "editableSheet": "public/sprites/units/progressive-burst-sources/nyx-5-burst-22frame-alpha.png",
+      "finalFrameMatchesIdlePixels": true,
+      "finalFrameMatchesIdleBytes": true
+    }
+  ]
+}

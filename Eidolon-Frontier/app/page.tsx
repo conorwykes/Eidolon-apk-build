@@ -42,7 +42,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   BATTLE_CONTACT_DROP_Y,
   BATTLE_CONTACT_GAP_X,
@@ -51,8 +51,8 @@ import {
   getWeaponContactPoint,
   type BattleUnitId,
 } from "../game/battle-choreography";
-import { getBattleDuration, getBattlePlaybackRate, getBattleTimeScale, type BattleSpeed } from "../game/battle-timing";
-import { AnimatedBattleStage, AttackImpactOverlay, BurstIntroOverlay, BurstRemotionOverlay } from "./components/BattleRemotion";
+import { getBattleDuration, getBattleTimeScale, type BattleSpeed } from "../game/battle-timing";
+import { AnimatedBattleStage, BurstIntroOverlay } from "./components/BattleRemotion";
 
 type Screen =
   | "home"
@@ -76,7 +76,7 @@ type StarTier = 2 | 3 | 4 | 5;
 type BattleMode = "story" | "rift" | "trial" | "tower" | "hunt" | "raid" | "vault";
 type CrystalKind = "burst" | "heart" | "gold" | "material";
 type AttackScope = "single" | "all";
-type AttackStage = "approach" | "windup" | "release" | "flight" | "impact" | "hitstop" | "recover" | "return";
+type AttackStage = "approach" | "windup" | "release" | "flight" | "impact" | "hitstop" | "recover" | "anchored" | "return";
 
 const CRITICAL_CHANCE = 1 / 32;
 const CRITICAL_DAMAGE_MULTIPLIER = 1.5;
@@ -102,7 +102,6 @@ type Unit = {
   leader: string;
   portrait?: string;
   keyArt: string;
-  burstVfx: string[];
   sprites: { idleA: string; idleB: string; attack: string[]; burst: string[] };
   glyph: string;
   cost: number;
@@ -110,6 +109,13 @@ type Unit = {
 };
 
 type BattleSpriteSet = { idle: string[]; attack: string[]; burst: string[] };
+
+const PROGRESSIVE_BURST_FRAME_COUNTS: Record<StarTier, Record<BattleUnitId, number>> = {
+  2: { kael: 6, lyra: 6, brannock: 6, zephyra: 6, solenne: 6, nyx: 6 },
+  3: { kael: 8, lyra: 8, brannock: 8, zephyra: 8, solenne: 8, nyx: 8 },
+  4: { kael: 12, lyra: 12, brannock: 12, zephyra: 12, solenne: 12, nyx: 12 },
+  5: { kael: 16, lyra: 16, brannock: 14, zephyra: 20, solenne: 14, nyx: 22 },
+};
 
 type UnitStarProfile = {
   attackName: string;
@@ -553,7 +559,6 @@ const UNITS: Unit[] = [
     leader: "Blazing Oath — Flame allies gain 25% ATK and 10% critical chance.",
     portrait: "/units/kael.webp",
     keyArt: "/units/key-art/kael.webp",
-    burstVfx: Array.from({ length: 4 }, (_, index) => `/effects/bursts/kael/phase-${index + 1}.webp`),
     sprites: {
       idleA: "/sprites/units/kael-idle-a.webp",
       idleB: "/sprites/units/kael-idle-b.webp",
@@ -584,7 +589,6 @@ const UNITS: Unit[] = [
     leader: "Flowing Grace — all allies gain 18% HP and recovery crystals heal more.",
     portrait: "/units/lyra.webp",
     keyArt: "/units/key-art/lyra.webp",
-    burstVfx: Array.from({ length: 4 }, (_, index) => `/effects/bursts/lyra/phase-${index + 1}.webp`),
     sprites: {
       idleA: "/sprites/units/lyra-idle-a.webp",
       idleB: "/sprites/units/lyra-idle-b.webp",
@@ -615,7 +619,6 @@ const UNITS: Unit[] = [
     leader: "Ancient Rampart — all allies gain 22% DEF and 15% max HP.",
     portrait: "/units/brannock.webp",
     keyArt: "/units/key-art/brannock.webp",
-    burstVfx: Array.from({ length: 4 }, (_, index) => `/effects/bursts/brannock/phase-${index + 1}.webp`),
     sprites: {
       idleA: "/sprites/units/brannock-idle-a.webp",
       idleB: "/sprites/units/brannock-idle-b.webp",
@@ -646,7 +649,6 @@ const UNITS: Unit[] = [
     leader: "Hunter’s Tempo — Spark hits fill the squad’s Burst gauges faster.",
     portrait: "/units/zephyra.webp",
     keyArt: "/units/key-art/zephyra.webp",
-    burstVfx: Array.from({ length: 4 }, (_, index) => `/effects/bursts/zephyra/phase-${index + 1}.webp`),
     sprites: {
       idleA: "/sprites/units/zephyra-idle-a.webp",
       idleB: "/sprites/units/zephyra-idle-b.webp",
@@ -677,7 +679,6 @@ const UNITS: Unit[] = [
     leader: "First Light — 20% boost to HP and gradual healing each turn.",
     portrait: "/units/solenne.webp",
     keyArt: "/units/key-art/solenne.webp",
-    burstVfx: Array.from({ length: 4 }, (_, index) => `/effects/bursts/solenne/phase-${index + 1}.webp`),
     sprites: {
       idleA: "/sprites/units/solenne-idle-a.webp",
       idleB: "/sprites/units/solenne-idle-b.webp",
@@ -708,7 +709,6 @@ const UNITS: Unit[] = [
     leader: "Edge of Night — Dark ATK +20% and final Burst strikes pierce defence.",
     portrait: "/units/nyx.webp",
     keyArt: "/units/key-art/nyx.webp",
-    burstVfx: Array.from({ length: 4 }, (_, index) => `/effects/bursts/nyx/phase-${index + 1}.webp`),
     sprites: {
       idleA: "/sprites/units/nyx-idle-a.webp",
       idleB: "/sprites/units/nyx-idle-b.webp",
@@ -723,7 +723,7 @@ const UNITS: Unit[] = [
 
 const evolutionFrames = (unitId: BattleUnitId, stars: StarTier, animation: "idle" | "attack" | "burst") =>
   Array.from(
-    { length: animation === "idle" && stars === 5 ? 6 : 4 },
+    { length: animation === "burst" ? PROGRESSIVE_BURST_FRAME_COUNTS[stars][unitId] : animation === "idle" && stars === 5 ? 6 : 4 },
     (_, index) => `/sprites/units/${unitId}-evolution/frames/${stars}/${animation}-${index + 1}.webp`,
   );
 
@@ -954,18 +954,6 @@ function getNormalCastSequence(unitId: BattleUnitId, stars: StarTier) {
     { frame: 1, stage: "windup" as const, hold },
     { frame: 2, stage: "release" as const, hold: Math.max(24, hold - 12) },
   ];
-}
-
-function showsZephyraProjectile(stage: AttackStage) {
-  return stage === "release" || stage === "flight" || stage === "impact" || stage === "hitstop" || stage === "recover";
-}
-
-function showsZephyraBowLightning(stage: AttackStage) {
-  return stage !== "approach" && stage !== "return";
-}
-
-function showsSolenneBeam(stage: AttackStage) {
-  return stage === "impact" || stage === "hitstop" || stage === "recover";
 }
 
 const normalisedChainCache = new Map<string, readonly NormalAttackBeat[]>();
@@ -1561,11 +1549,8 @@ function StableBattleFrame({ src, className }: { src: string; className: string 
   return <img className={className} src={displayedSrc} alt="" draggable={false} data-frame-ready="true" />;
 }
 
-/* BurstAnimationCanvas removed: it was a from-scratch Canvas2D 88-particle
-   draw loop duplicating ElementalBurstLayer's job in a second renderer.
-   Bursts now render through BurstRemotionOverlay only (called directly
-   where this component used to be invoked). See app/globals.css for the
-   corresponding removal of .burst-signature / .burst-animation-canvas. */
+/* Procedural attack and Burst VFX are intentionally absent. Burst presentation
+   uses the cinematic cut-in, followed by the authored progressive sprite frames. */
 
 const FIVE_STAR_IDLE_TIMING: Record<BattleUnitId, { milliseconds: number; startFrame: number }> = {
   kael: { milliseconds: 360, startFrame: 0 },
@@ -2777,11 +2762,13 @@ export default function GatesOfAzura() {
     }]);
     playSfx(burst ? "burst" : "tap");
     if (burst) {
-      // Keep combat parked until the named Burst illustration has fully faded.
+      // Keep the named character intro, then hand straight to the authored
+      // sprite anticipation. The old battlefield VFX and Kael video remain
+      // removed and do not play underneath it.
       await waitForBattle(760);
       setAttackFxs((current) => current.map((fx) => fx.id === attackId ? { ...fx, phase: "burst", stage: "approach" } : fx));
       playSfx("burst");
-      await waitForBattle(180);
+      await waitForBattle(90);
     } else {
       await waitForBattle(180);
     }
@@ -2803,14 +2790,63 @@ export default function GatesOfAzura() {
       const nextNormalBeat = step < animationSteps - 1 ? normalAttackChain[Math.min(step + 1, normalAttackChain.length - 1)] : null;
       const startsNormalPose = !burst && (!previousNormalBeat || previousNormalBeat.pose !== normalBeat.pose);
       const endsNormalPose = !burst && (!nextNormalBeat || nextNormalBeat.pose !== normalBeat.pose);
+      // A Burst now owns a complete rarity-scaled timeline instead of using
+      // four attack-like drawings as a hit counter. The opening anticipation
+      // frames play before the first damage packet, the middle action frames
+      // advance across every hit, and the final anchored recovery plays after
+      // the last packet. This keeps damage unchanged while giving higher forms
+      // more genuine animation.
+      const burstOpeningFrames = Math.max(1, Math.round(battleSprites.burst.length * 0.18));
+      const burstRecoveryFrames = Math.max(2, Math.round(battleSprites.burst.length * 0.18));
+      const burstActionStart = burstOpeningFrames;
+      const burstActionEnd = Math.max(burstActionStart, battleSprites.burst.length - burstRecoveryFrames - 1);
+      const burstActionSpan = Math.max(1, burstActionEnd - burstActionStart + 1);
+      const previousBurstFrame = step > 0
+        ? Math.min(
+            burstActionEnd,
+            burstActionStart + Math.floor((step - 1) * Math.max(1, burstActionEnd - burstActionStart) / Math.max(1, animationSteps - 1)),
+          )
+        : burstActionStart - 1;
       const attackFrame = burst
-        ? Math.min(battleSprites.burst.length - 1, Math.floor(step * battleSprites.burst.length / animationSteps))
+        ? Math.min(
+            burstActionEnd,
+            burstActionStart + Math.floor(step * Math.max(1, burstActionEnd - burstActionStart) / Math.max(1, animationSteps - 1)),
+          )
         : normalBeat.frame;
       // Every authored unit now opens each damage packet with its own drawn
       // wind-up. Zephyra plays a full bow draw, Solenne a planted invocation,
       // and the melee units their own lunge, turning step, shouldered heave or
       // blink. One table drives all of them.
       const castSequence = !burst && startsNormalPose ? getNormalCastSequence(unit.id, stars) : undefined;
+      if (burst && step === 0) {
+        for (const frame of Array.from({ length: burstOpeningFrames }, (_, index) => index)) {
+          setAttackFxs((current) => current.map((fx) => fx.id === attackId ? {
+            ...fx,
+            frame,
+            volley: 0,
+            targetEnemyId: visualTargetId,
+            stage: frame === 0 ? "windup" : "release",
+          } : fx));
+          await waitForBattle(frame === 0 ? 88 : 64);
+        }
+      }
+      if (burst) {
+        // When a form owns more drawings than damage packets, show every
+        // intermediate action pose before the next packet rather than skipping
+        // directly to the contact drawing. The highest rarities therefore gain
+        // visible motion, not merely a larger asset list.
+        const burstActionFrameStart = Math.max(burstActionStart, previousBurstFrame + 1);
+        for (const frame of Array.from({ length: Math.max(0, attackFrame - burstActionFrameStart) }, (_, index) => burstActionFrameStart + index)) {
+          setAttackFxs((current) => current.map((fx) => fx.id === attackId ? {
+            ...fx,
+            frame,
+            volley: step,
+            targetEnemyId: visualTargetId,
+            stage: frame < burstActionStart + burstActionSpan / 2 ? "release" : "flight",
+          } : fx));
+          await waitForBattle(46);
+        }
+      }
       if (castSequence) {
         for (const drawing of castSequence) {
           setAttackFxs((current) => current.map((fx) => fx.id === attackId ? {
@@ -2991,6 +3027,17 @@ export default function GatesOfAzura() {
       );
     }
 
+    if (burst) {
+      const recoveryStart = Math.max(0, battleSprites.burst.length - Math.max(2, Math.round(battleSprites.burst.length * 0.18)));
+      for (const frame of Array.from({ length: Math.max(0, battleSprites.burst.length - recoveryStart) }, (_, index) => recoveryStart + index)) {
+        setAttackFxs((current) => current.map((fx) => fx.id === attackId ? {
+          ...fx,
+          frame,
+          stage: frame === battleSprites.burst.length - 1 ? "anchored" : "recover",
+        } : fx));
+        await waitForBattle(frame === battleSprites.burst.length - 1 ? 120 : 54);
+      }
+    }
     const resolved = battleRef.current;
     if (resolved) updateBattleLive((state) => ({ ...state, message: `${unit.name} completes ${burst ? combatProfile.burstName : combatProfile.attackName}. Tap another unit—overlap attacks to Spark.` }));
     setAttackFxs((current) => current.map((fx) => fx.id === attackId ? { ...fx, stage: "return" } : fx));
@@ -3638,17 +3685,13 @@ export default function GatesOfAzura() {
           : battleStageSrc.includes("reliquary")
             ? "reliquary"
             : "causeway";
-    const activeBurstFxs = attackFxs.filter((fx) => fx.phase === "burst");
-    const activeBurstFx = activeBurstFxs[activeBurstFxs.length - 1];
-    const activeBurstUnit = activeBurstFx ? getUnit(activeBurstFx.unitId) : null;
     const burstIntroFxs = attackFxs.filter((fx) => fx.phase === "burst-intro");
     const burstIntroFx = burstIntroFxs[burstIntroFxs.length - 1];
     const burstIntroUnit = burstIntroFx ? getUnit(burstIntroFx.unitId) : null;
-    const kaelBurstScreenFx = attackFxs.find((fx) => fx.unitId === "kael" && (fx.phase === "burst-intro" || fx.phase === "burst"));
     const actionLocked = autoTurnActive || enemyTurnLock.current || battleFlowLock.current || combatFx.phase === "enemy" || combatFx.phase === "opening" || combatFx.phase === "wave";
     return (
       <div
-        className={`battle-screen battle-${targetedEnemy.element} battle-speed-${battleSpeed} fx-${combatFx.phase} ${activeBurstUnit ? `burst-unit-${activeBurstUnit.id}` : ""}`}
+        className={`battle-screen battle-${targetedEnemy.element} battle-speed-${battleSpeed} fx-${combatFx.phase}`}
         style={{ "--battle-time-scale": getBattleTimeScale(battleSpeed) } as CSSProperties}
       >
         <header className="battle-header">
@@ -3673,20 +3716,6 @@ export default function GatesOfAzura() {
           <AnimatedBattleStage stageId={stageId} stageSrc={battleStageSrc} />
           <img className={`stage-background stage-poster ${stageId === "field" ? "stage-poster-sunpetal" : ""}`} src={battleStageSrc} alt={`${quest.location} battle stage`} draggable={false} style={stageId === "field" ? { objectPosition: "center 25%" } : undefined} />
           <div className={`stage-atmosphere ${stageId === "field" ? "stage-atmosphere-sunpetal" : ""}`} />
-          {kaelBurstScreenFx && (
-            <video
-              key={`kael-battlefield-source-${kaelBurstScreenFx.id}`}
-              className="kael-burst-fullscreen-source"
-              src="/effects/bursts/kael/fullscreen-embers.mp4"
-              autoPlay
-              loop
-              muted
-              playsInline
-              preload="auto"
-              ref={(video) => { if (video) video.playbackRate = getBattlePlaybackRate(battleSpeed); }}
-              aria-hidden="true"
-            />
-          )}
           <div
             className="battlefield-stage-frame"
             style={{
@@ -3714,12 +3743,6 @@ export default function GatesOfAzura() {
               const isAttacking = member.instanceId === combatFx.activeEnemyId && combatFx.phase === "enemy";
               const isDefeated = member.hp <= 0;
               const isHeldForChain = isDefeated && attackFxs.some((fx) => fx.scope === "single" && fx.targetEnemyId === member.instanceId);
-              const solenneBeamFx = attackFxs.find((fx) => (
-                fx.unitId === "solenne"
-                && fx.phase === "attack"
-                && fx.targetEnemyId === member.instanceId
-                && showsSolenneBeam(fx.stage)
-              ));
               const staggerFx = damageFxs.filter((fx) => fx.targetEnemyId === member.instanceId).at(-1);
               const contactOffset = staggerFx ? getWeaponContactOffset(staggerFx.unitId, staggerFx.hit, staggerFx.burst) : null;
               const stagger = staggerFx && contactOffset ? getEnemyStaggerProfile({
@@ -3755,18 +3778,10 @@ export default function GatesOfAzura() {
                   aria-pressed={isTargeted}
                   aria-label={`${enemy.name}${isTargeted ? ", focused. Tap again to clear focus" : ", tap to focus single-target attacks"}`}
                 >
-                  {solenneBeamFx && (
-                    <span
-                      key={`${solenneBeamFx.id}-beam-${solenneBeamFx.volley}`}
-                      className={`solenne-judgement-beam solenne-beam-stage-${solenneBeamFx.stage}`}
-                      aria-hidden="true"
-                    ><i /><b /><em /></span>
-                  )}
                   <span className="enemy-stagger-rig" key={staggerFx?.id ?? `${member.instanceId}-rest`}>
                     <span className="enemy-aura" />
                     <img className="enemy-sprite" src={enemy.sprite} alt="" draggable={false} />
                   </span>
-                  {staggerFx && <span className="enemy-contact-pin" key={`contact-${staggerFx.id}`} aria-hidden="true" />}
                   {member.ailments.length > 0 && <span className="enemy-ailments">{member.ailments.slice(0, 2).map((ailment) => <i key={ailment}>{ailment}</i>)}</span>}
                   {isTargeted && <span className="target-lock" aria-hidden="true"><Target /><small>FOCUS</small></span>}
                 </button>
@@ -3784,21 +3799,6 @@ export default function GatesOfAzura() {
               const stars = save.unitStars[unit.id] ?? 3;
               const rangedAdvanceX = Math.round((attackFx?.contactX ?? 0) * ZEPHYRA_RANGED_ADVANCE);
               const rangedAdvanceY = Math.round((attackFx?.contactY ?? 0) * ZEPHYRA_RANGED_ADVANCE);
-              const arrowTravelX = (attackFx?.contactX ?? 0) - rangedAdvanceX - 18;
-              const arrowTravelY = (attackFx?.contactY ?? 0) - rangedAdvanceY;
-              const arrowAngle = Math.atan2(arrowTravelY, arrowTravelX) * 180 / Math.PI - 180;
-              const showProjectile = Boolean(
-                attackFx
-                && attackFx.phase === "attack"
-                && unit.id === "zephyra"
-                && showsZephyraProjectile(attackFx.stage),
-              );
-              const showBowLightning = Boolean(
-                attackFx
-                && attackFx.phase === "attack"
-                && unit.id === "zephyra"
-                && showsZephyraBowLightning(attackFx.stage),
-              );
               return (
                 <div
                   key={`${unit.id}-${index}`}
@@ -3809,9 +3809,6 @@ export default function GatesOfAzura() {
                     "--contact-y": `${attackFx?.contactY ?? 0}px`,
                     "--ranged-x": `${rangedAdvanceX}px`,
                     "--ranged-y": `${rangedAdvanceY}px`,
-                    "--arrow-travel-x": `${arrowTravelX}px`,
-                    "--arrow-travel-y": `${arrowTravelY}px`,
-                    "--arrow-angle": `${arrowAngle}deg`,
                   } as CSSProperties}
                 >
                   <span className="field-unit-shadow" />
@@ -3821,20 +3818,6 @@ export default function GatesOfAzura() {
                     mode={spriteMode}
                     attackFrame={attackFx?.frame ?? 0}
                   />
-                  {showBowLightning && attackFx && (
-                    <span
-                      key={`${attackFx.id}-storm-${attackFx.volley}`}
-                      className={`zephyra-bow-lightning lightning-stage-${attackFx.stage}`}
-                      aria-hidden="true"
-                    >{Array.from({ length: 3 }, (_, arc) => <i key={arc} />)}</span>
-                  )}
-                  {showProjectile && attackFx && (
-                    <span
-                      key={`${attackFx.id}-volley-${attackFx.volley}`}
-                      className="zephyra-arrow-flight"
-                      aria-hidden="true"
-                    ><i /></span>
-                  )}
                   <span className="field-unit-aura" />
                   {isTarget && combatFx.phase === "enemy" && <span className="target-damage">-{combatFx.damage.toLocaleString()}</span>}
                   {member.guarding && <span className="guard-sigil"><Shield /></span>}
@@ -3844,68 +3827,6 @@ export default function GatesOfAzura() {
               );
             })}
           </div>
-
-          {/* The per-hit .attack-frame-transition streak was removed: a 190px
-              near-white bar in screen blend mode sat across the contact point on
-              every single hit, washing out the artwork it was meant to punctuate.
-              Contact is now read from the enemy pin, stagger and elemental VFX. */}
-
-          {/* Previously every burst rendered THREE independent, fully overlapping
-              VFX systems at once: this CSS .burst-signature flourish (border/
-              clip-path shapes), a from-scratch Canvas2D 88-particle draw loop
-              inside BurstAnimationCanvas, and the Remotion composition below it.
-              All three drew the same moment in different techniques, which is
-              why bursts read as visual noise rather than one clear effect.
-              Consolidated onto the Remotion layer, which now owns the full
-              charge -> hits -> finisher arc procedurally per element (see
-              ElementalBurstLayer and BurstFinisherFlourish in BattleVfx.tsx) and
-              carries each unit's distinct silhouette that .burst-signature used
-              to provide, without three renderers fighting for the same pixels. */}
-          {activeBurstFxs.map((burstFx) => {
-            const burstUnit = getUnit(burstFx.unitId);
-            const burstStars = save.unitStars[burstUnit.id] ?? 3;
-            const burstProfile = getUnitCombatProfile(burstUnit, burstStars);
-            const finisher = burstFx.volley >= burstFx.hits - 1;
-            const burstTargetIndex = Math.max(0, battle.enemies.findIndex((enemy) => enemy.instanceId === burstFx.targetEnemyId));
-            const targetPosition = ENEMY_FORMATIONS[battle.enemies.length]?.[burstTargetIndex] ?? ENEMY_FORMATIONS[2][0];
-            return (
-              <Fragment key={`burst-${burstFx.id}`}>
-                <BurstRemotionOverlay
-                  instanceId={burstFx.id}
-                  unitId={burstUnit.id}
-                  stars={burstStars}
-                  hitCount={burstFx.hits}
-                  speed={battleSpeed}
-                  targetLeft={targetPosition.left}
-                  targetBottom={targetPosition.bottom}
-                  reducedEffects={gameSettings.reducedEffects}
-                />
-                {finisher && burstFx.stage !== "windup" && (
-                  <span className="burst-finisher-mark" aria-hidden="true"><strong>{burstProfile.burstDoesDamage ? "FINAL" : "RESTORE"}</strong><small>{burstProfile.burstName}</small></span>
-                )}
-              </Fragment>
-            );
-          })}
-
-          {damageFxs.filter((fx) => !fx.burst).map((fx) => {
-            const targetIndex = Math.max(0, battle.enemies.findIndex((enemy) => enemy.instanceId === fx.targetEnemyId));
-            const targetPosition = ENEMY_FORMATIONS[battle.enemies.length]?.[targetIndex] ?? ENEMY_FORMATIONS[2][0];
-            return (
-              <AttackImpactOverlay
-                key={`attack-impact-${fx.id}`}
-                instanceId={fx.id}
-                unitId={fx.unitId}
-                stars={save.unitStars[fx.unitId] ?? 3}
-                speed={battleSpeed}
-                targetLeft={targetPosition.left}
-                targetBottom={targetPosition.bottom}
-                hitIndex={fx.hit}
-                reducedEffects={gameSettings.reducedEffects}
-                critical={fx.critical}
-                spark={fx.spark}
-              />
-            );
-          })}
 
           {damageFxs.map((fx) => {
             const targetIndex = Math.max(0, battle.enemies.findIndex((enemy) => enemy.instanceId === fx.targetEnemyId));
