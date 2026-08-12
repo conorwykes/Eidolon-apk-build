@@ -51,8 +51,8 @@ import {
   getWeaponContactPoint,
   type BattleUnitId,
 } from "../game/battle-choreography";
-import { getBattleDuration, getBattlePlaybackRate, getBattleTimeScale, type BattleSpeed } from "../game/battle-timing";
-import { AnimatedBattleStage, AttackImpactOverlay, BurstIntroOverlay, BurstRemotionOverlay } from "./components/BattleRemotion";
+import { getBattleDuration, getBattleTimeScale, type BattleSpeed } from "../game/battle-timing";
+import { AnimatedBattleStage, BurstIntroOverlay } from "./components/BattleRemotion";
 
 type Screen =
   | "home"
@@ -76,7 +76,7 @@ type StarTier = 2 | 3 | 4 | 5;
 type BattleMode = "story" | "rift" | "trial" | "tower" | "hunt" | "raid" | "vault";
 type CrystalKind = "burst" | "heart" | "gold" | "material";
 type AttackScope = "single" | "all";
-type AttackStage = "approach" | "windup" | "release" | "flight" | "impact" | "hitstop" | "recover" | "return";
+type AttackStage = "approach" | "windup" | "release" | "flight" | "impact" | "hitstop" | "recover" | "anchored" | "return";
 
 const CRITICAL_CHANCE = 1 / 32;
 const CRITICAL_DAMAGE_MULTIPLIER = 1.5;
@@ -102,7 +102,6 @@ type Unit = {
   leader: string;
   portrait?: string;
   keyArt: string;
-  burstVfx: string[];
   sprites: { idleA: string; idleB: string; attack: string[]; burst: string[] };
   glyph: string;
   cost: number;
@@ -110,6 +109,13 @@ type Unit = {
 };
 
 type BattleSpriteSet = { idle: string[]; attack: string[]; burst: string[] };
+
+const PROGRESSIVE_BURST_FRAME_COUNTS: Record<StarTier, Record<BattleUnitId, number>> = {
+  2: { kael: 6, lyra: 6, brannock: 6, zephyra: 6, solenne: 6, nyx: 6 },
+  3: { kael: 8, lyra: 8, brannock: 8, zephyra: 8, solenne: 8, nyx: 8 },
+  4: { kael: 12, lyra: 12, brannock: 12, zephyra: 12, solenne: 12, nyx: 12 },
+  5: { kael: 16, lyra: 16, brannock: 14, zephyra: 20, solenne: 14, nyx: 22 },
+};
 
 type UnitStarProfile = {
   attackName: string;
@@ -553,7 +559,6 @@ const UNITS: Unit[] = [
     leader: "Blazing Oath — Flame allies gain 25% ATK and 10% critical chance.",
     portrait: "/units/kael.webp",
     keyArt: "/units/key-art/kael.webp",
-    burstVfx: Array.from({ length: 4 }, (_, index) => `/effects/bursts/kael/phase-${index + 1}.webp`),
     sprites: {
       idleA: "/sprites/units/kael-idle-a.webp",
       idleB: "/sprites/units/kael-idle-b.webp",
@@ -584,7 +589,6 @@ const UNITS: Unit[] = [
     leader: "Flowing Grace — all allies gain 18% HP and recovery crystals heal more.",
     portrait: "/units/lyra.webp",
     keyArt: "/units/key-art/lyra.webp",
-    burstVfx: Array.from({ length: 4 }, (_, index) => `/effects/bursts/lyra/phase-${index + 1}.webp`),
     sprites: {
       idleA: "/sprites/units/lyra-idle-a.webp",
       idleB: "/sprites/units/lyra-idle-b.webp",
@@ -615,7 +619,6 @@ const UNITS: Unit[] = [
     leader: "Ancient Rampart — all allies gain 22% DEF and 15% max HP.",
     portrait: "/units/brannock.webp",
     keyArt: "/units/key-art/brannock.webp",
-    burstVfx: Array.from({ length: 4 }, (_, index) => `/effects/bursts/brannock/phase-${index + 1}.webp`),
     sprites: {
       idleA: "/sprites/units/brannock-idle-a.webp",
       idleB: "/sprites/units/brannock-idle-b.webp",
@@ -646,7 +649,6 @@ const UNITS: Unit[] = [
     leader: "Hunter’s Tempo — Spark hits fill the squad’s Burst gauges faster.",
     portrait: "/units/zephyra.webp",
     keyArt: "/units/key-art/zephyra.webp",
-    burstVfx: Array.from({ length: 4 }, (_, index) => `/effects/bursts/zephyra/phase-${index + 1}.webp`),
     sprites: {
       idleA: "/sprites/units/zephyra-idle-a.webp",
       idleB: "/sprites/units/zephyra-idle-b.webp",
@@ -677,7 +679,6 @@ const UNITS: Unit[] = [
     leader: "First Light — 20% boost to HP and gradual healing each turn.",
     portrait: "/units/solenne.webp",
     keyArt: "/units/key-art/solenne.webp",
-    burstVfx: Array.from({ length: 4 }, (_, index) => `/effects/bursts/solenne/phase-${index + 1}.webp`),
     sprites: {
       idleA: "/sprites/units/solenne-idle-a.webp",
       idleB: "/sprites/units/solenne-idle-b.webp",
@@ -708,7 +709,6 @@ const UNITS: Unit[] = [
     leader: "Edge of Night — Dark ATK +20% and final Burst strikes pierce defence.",
     portrait: "/units/nyx.webp",
     keyArt: "/units/key-art/nyx.webp",
-    burstVfx: Array.from({ length: 4 }, (_, index) => `/effects/bursts/nyx/phase-${index + 1}.webp`),
     sprites: {
       idleA: "/sprites/units/nyx-idle-a.webp",
       idleB: "/sprites/units/nyx-idle-b.webp",
@@ -723,7 +723,7 @@ const UNITS: Unit[] = [
 
 const evolutionFrames = (unitId: BattleUnitId, stars: StarTier, animation: "idle" | "attack" | "burst") =>
   Array.from(
-    { length: animation === "idle" && stars === 5 ? 6 : 4 },
+    { length: animation === "burst" ? PROGRESSIVE_BURST_FRAME_COUNTS[stars][unitId] : animation === "idle" && stars === 5 ? 6 : 4 },
     (_, index) => `/sprites/units/${unitId}-evolution/frames/${stars}/${animation}-${index + 1}.webp`,
   );
 
@@ -821,34 +821,34 @@ const LYRA_STAR_PROFILES: Record<StarTier, UnitStarProfile> = {
 
 const OTHER_UNIT_STAR_PROFILES: Record<Exclude<BattleUnitId, "lyra">, Record<StarTier, UnitStarProfile>> = {
   kael: {
-    2: { attackName: "Ember Hew", burstName: "Ember Oath", attackScope: "single", burstScope: "single", attackMultiplier: 0.96, burstMultiplier: 2.25, burstHits: 4, gaugeGain: 34, healRatio: 0, cleanse: false, burstBuff: "", burstDescription: "4-hit recruit flame art ending in a compact ember crest.", leader: "First Spark — Fire allies gain 7% ATK.", burstDoesDamage: true, maxLevel: 25, statMultiplier: 0.52, statGrowth: { hp: 0.0085, atk: 0.009, def: 0.0075, rec: 0.007 }, ascension: { seals: 1, cores: 4 } },
-    3: { attackName: "Cinder Rising", burstName: "Cinder Wheel", attackScope: "single", burstScope: "single", attackMultiplier: 1.06, burstMultiplier: 2.68, burstHits: 6, gaugeGain: 40, healRatio: 0, cleanse: false, burstBuff: "ATK UP", burstDescription: "6-hit rising flame chain that grants the squad ATK UP.", leader: "Cinder Discipline — Fire allies gain 11% ATK and DEF.", burstDoesDamage: true, maxLevel: 45, statMultiplier: 0.7, statGrowth: { hp: 0.009, atk: 0.0105, def: 0.008, rec: 0.007 }, ascension: { seals: 2, cores: 7 } },
-    4: { attackName: "Furnace Break", burstName: "Blazing Crucible", attackScope: "single", burstScope: "all", attackMultiplier: 1.16, burstMultiplier: 3.08, burstHits: 8, gaugeGain: 46, healRatio: 0, cleanse: false, burstBuff: "ATK UP", burstDescription: "8-hit all-foe furnace eruption that ignites and empowers the squad.", leader: "Crucible Heart — all allies gain 16% ATK; Fire damage rises further.", burstDoesDamage: true, maxLevel: 65, statMultiplier: 0.88, statGrowth: { hp: 0.0095, atk: 0.0115, def: 0.0085, rec: 0.0075 }, ascension: { seals: 5, cores: 12 } },
-    5: { attackName: "Phoenix Drive", burstName: "Sunforged Cataclysm", attackScope: "single", burstScope: "all", attackMultiplier: 1.08, burstMultiplier: 3.62, burstHits: 12, gaugeGain: 52, healRatio: 0, cleanse: false, burstBuff: "INFERNO", burstDescription: "12-hit phoenix cataclysm across all foes; grants Inferno to the squad.", leader: "Vanguard Flame — all allies gain 24% ATK and enhanced critical damage.", burstDoesDamage: true, maxLevel: 90, statMultiplier: 1.07, statGrowth: { hp: 0.01, atk: 0.013, def: 0.009, rec: 0.008 }, ascension: { seals: 0, cores: 0 } },
+    2: { attackName: "Ember Hew", burstName: "Ember Oath", attackScope: "single", burstScope: "single", attackMultiplier: 0.96, burstMultiplier: 2.25, burstHits: 6, gaugeGain: 34, healRatio: 0, cleanse: false, burstBuff: "", burstDescription: "6-hit recruit flame art ending in a compact ember crest.", leader: "First Spark — Fire allies gain 7% ATK.", burstDoesDamage: true, maxLevel: 25, statMultiplier: 0.52, statGrowth: { hp: 0.0085, atk: 0.009, def: 0.0075, rec: 0.007 }, ascension: { seals: 1, cores: 4 } },
+    3: { attackName: "Cinder Rising", burstName: "Cinder Wheel", attackScope: "single", burstScope: "single", attackMultiplier: 1.06, burstMultiplier: 2.68, burstHits: 8, gaugeGain: 40, healRatio: 0, cleanse: false, burstBuff: "ATK UP", burstDescription: "8-hit rising flame chain that grants the squad ATK UP.", leader: "Cinder Discipline — Fire allies gain 11% ATK and DEF.", burstDoesDamage: true, maxLevel: 45, statMultiplier: 0.7, statGrowth: { hp: 0.009, atk: 0.0105, def: 0.008, rec: 0.007 }, ascension: { seals: 2, cores: 7 } },
+    4: { attackName: "Furnace Break", burstName: "Blazing Crucible", attackScope: "single", burstScope: "all", attackMultiplier: 1.16, burstMultiplier: 3.08, burstHits: 12, gaugeGain: 46, healRatio: 0, cleanse: false, burstBuff: "ATK UP", burstDescription: "12-hit all-foe furnace eruption that ignites and empowers the squad.", leader: "Crucible Heart — all allies gain 16% ATK; Fire damage rises further.", burstDoesDamage: true, maxLevel: 65, statMultiplier: 0.88, statGrowth: { hp: 0.0095, atk: 0.0115, def: 0.0085, rec: 0.0075 }, ascension: { seals: 5, cores: 12 } },
+    5: { attackName: "Phoenix Drive", burstName: "Sunforged Cataclysm", attackScope: "single", burstScope: "all", attackMultiplier: 1.08, burstMultiplier: 3.62, burstHits: 16, gaugeGain: 52, healRatio: 0, cleanse: false, burstBuff: "INFERNO", burstDescription: "16-hit phoenix cataclysm across all foes; grants Inferno to the squad.", leader: "Vanguard Flame — all allies gain 24% ATK and enhanced critical damage.", burstDoesDamage: true, maxLevel: 90, statMultiplier: 1.07, statGrowth: { hp: 0.01, atk: 0.013, def: 0.009, rec: 0.008 }, ascension: { seals: 0, cores: 0 } },
   },
   brannock: {
-    2: { attackName: "Rootknock", burstName: "Seedstone Ward", attackScope: "single", burstScope: "single", attackMultiplier: 0.92, burstMultiplier: 2.18, burstHits: 4, gaugeGain: 32, healRatio: 0, cleanse: false, burstBuff: "GUARD UP", burstDescription: "4-hit earthen ward art that grants Guard Up.", leader: "Young Rampart — all allies gain 7% DEF.", burstDoesDamage: true, maxLevel: 25, statMultiplier: 0.56, statGrowth: { hp: 0.0105, atk: 0.007, def: 0.011, rec: 0.007 }, ascension: { seals: 1, cores: 4 } },
-    3: { attackName: "Briar Quake", burstName: "Grove Rampart", attackScope: "single", burstScope: "single", attackMultiplier: 1.03, burstMultiplier: 2.58, burstHits: 6, gaugeGain: 38, healRatio: 0, cleanse: false, burstBuff: "GUARD UP", burstDescription: "6-hit rootline quake that raises the squad's guard.", leader: "Grove Formation — all allies gain 11% DEF and 7% max HP.", burstDoesDamage: true, maxLevel: 45, statMultiplier: 0.74, statGrowth: { hp: 0.011, atk: 0.0075, def: 0.012, rec: 0.0075 }, ascension: { seals: 2, cores: 7 } },
-    4: { attackName: "Faultroot Crusher", burstName: "Heartwood Bastion", attackScope: "single", burstScope: "all", attackMultiplier: 1.14, burstMultiplier: 2.98, burstHits: 8, gaugeGain: 43, healRatio: 0, cleanse: false, burstBuff: "BARKSKIN", burstDescription: "8-hit all-foe fault surge that wraps allies in Barkskin.", leader: "Stonebark Oath — all allies gain 17% DEF and 12% max HP.", burstDoesDamage: true, maxLevel: 65, statMultiplier: 0.9, statGrowth: { hp: 0.012, atk: 0.008, def: 0.013, rec: 0.008 }, ascension: { seals: 5, cores: 12 } },
-    5: { attackName: "Worldroot Rupture", burstName: "Elderwood Citadel", attackScope: "single", burstScope: "all", attackMultiplier: 1.04, burstMultiplier: 3.42, burstHits: 10, gaugeGain: 48, healRatio: 0, cleanse: false, burstBuff: "CITADEL", burstDescription: "10-hit worldroot rupture across all foes; raises the Elderwood Citadel.", leader: "Living Fortress — all allies gain 26% DEF and 20% max HP.", burstDoesDamage: true, maxLevel: 90, statMultiplier: 1.05, statGrowth: { hp: 0.0135, atk: 0.0085, def: 0.0145, rec: 0.0085 }, ascension: { seals: 0, cores: 0 } },
+    2: { attackName: "Rootknock", burstName: "Seedstone Ward", attackScope: "single", burstScope: "single", attackMultiplier: 0.92, burstMultiplier: 2.18, burstHits: 6, gaugeGain: 32, healRatio: 0, cleanse: false, burstBuff: "GUARD UP", burstDescription: "6-hit earthen ward art that grants Guard Up.", leader: "Young Rampart — all allies gain 7% DEF.", burstDoesDamage: true, maxLevel: 25, statMultiplier: 0.56, statGrowth: { hp: 0.0105, atk: 0.007, def: 0.011, rec: 0.007 }, ascension: { seals: 1, cores: 4 } },
+    3: { attackName: "Briar Quake", burstName: "Grove Rampart", attackScope: "single", burstScope: "single", attackMultiplier: 1.03, burstMultiplier: 2.58, burstHits: 8, gaugeGain: 38, healRatio: 0, cleanse: false, burstBuff: "GUARD UP", burstDescription: "8-hit rootline quake that raises the squad's guard.", leader: "Grove Formation — all allies gain 11% DEF and 7% max HP.", burstDoesDamage: true, maxLevel: 45, statMultiplier: 0.74, statGrowth: { hp: 0.011, atk: 0.0075, def: 0.012, rec: 0.0075 }, ascension: { seals: 2, cores: 7 } },
+    4: { attackName: "Faultroot Crusher", burstName: "Heartwood Bastion", attackScope: "single", burstScope: "all", attackMultiplier: 1.14, burstMultiplier: 2.98, burstHits: 12, gaugeGain: 43, healRatio: 0, cleanse: false, burstBuff: "BARKSKIN", burstDescription: "12-hit all-foe fault surge that wraps allies in Barkskin.", leader: "Stonebark Oath — all allies gain 17% DEF and 12% max HP.", burstDoesDamage: true, maxLevel: 65, statMultiplier: 0.9, statGrowth: { hp: 0.012, atk: 0.008, def: 0.013, rec: 0.008 }, ascension: { seals: 5, cores: 12 } },
+    5: { attackName: "Worldroot Rupture", burstName: "Elderwood Citadel", attackScope: "single", burstScope: "all", attackMultiplier: 1.04, burstMultiplier: 3.42, burstHits: 14, gaugeGain: 48, healRatio: 0, cleanse: false, burstBuff: "CITADEL", burstDescription: "14-hit worldroot rupture across all foes; raises the Elderwood Citadel.", leader: "Living Fortress — all allies gain 26% DEF and 20% max HP.", burstDoesDamage: true, maxLevel: 90, statMultiplier: 1.05, statGrowth: { hp: 0.0135, atk: 0.0085, def: 0.0145, rec: 0.0085 }, ascension: { seals: 0, cores: 0 } },
   },
   zephyra: {
-    2: { attackName: "Breeze Shot", burstName: "Four Winds Drill", attackScope: "single", burstScope: "single", attackMultiplier: 0.98, burstMultiplier: 2.22, burstHits: 4, gaugeGain: 36, healRatio: 0, cleanse: false, burstBuff: "", burstDescription: "4-hit ranged wind-arrow drill against one foe.", leader: "Scout's Eye — Thunder allies gain 7% critical rate.", burstDoesDamage: true, maxLevel: 25, statMultiplier: 0.48, statGrowth: { hp: 0.007, atk: 0.0105, def: 0.0065, rec: 0.008 }, ascension: { seals: 1, cores: 4 } },
-    3: { attackName: "Crosswind Volley", burstName: "Cyclone Quiver", attackScope: "single", burstScope: "single", attackMultiplier: 1.08, burstMultiplier: 2.7, burstHits: 7, gaugeGain: 42, healRatio: 0, cleanse: false, burstBuff: "HASTE", burstDescription: "7-hit ranged cyclone volley that grants Haste.", leader: "Galebow Tempo — Spark windows and Burst gain are moderately increased.", burstDoesDamage: true, maxLevel: 45, statMultiplier: 0.68, statGrowth: { hp: 0.0075, atk: 0.0115, def: 0.007, rec: 0.0085 }, ascension: { seals: 2, cores: 7 } },
-    4: { attackName: "Thunderhead Arc", burstName: "Stormwheel Barrage", attackScope: "single", burstScope: "all", attackMultiplier: 1.17, burstMultiplier: 3.12, burstHits: 10, gaugeGain: 48, healRatio: 0, cleanse: false, burstBuff: "HASTE", burstDescription: "10-hit ranged lightning barrage across all foes; grants Haste.", leader: "Tempest Pursuit — all allies gain 16% critical damage and faster Burst gain.", burstDoesDamage: true, maxLevel: 65, statMultiplier: 0.86, statGrowth: { hp: 0.008, atk: 0.0125, def: 0.0075, rec: 0.009 }, ascension: { seals: 5, cores: 12 } },
-    5: { attackName: "Horizon Piercer", burstName: "Heavenfall Constellation", attackScope: "single", burstScope: "all", attackMultiplier: 1.1, burstMultiplier: 3.66, burstHits: 14, gaugeGain: 56, healRatio: 0, cleanse: false, burstBuff: "SKYHUNT", burstDescription: "14-hit ranged storm constellation rains arrows on every foe.", leader: "Skybreak Hunt — all allies gain 24% critical damage and greatly increased Burst gain.", burstDoesDamage: true, maxLevel: 90, statMultiplier: 1.08, statGrowth: { hp: 0.0085, atk: 0.014, def: 0.008, rec: 0.0095 }, ascension: { seals: 0, cores: 0 } },
+    2: { attackName: "Breeze Shot", burstName: "Four Winds Drill", attackScope: "single", burstScope: "single", attackMultiplier: 0.98, burstMultiplier: 2.22, burstHits: 6, gaugeGain: 36, healRatio: 0, cleanse: false, burstBuff: "", burstDescription: "6-hit ranged wind-arrow drill against one foe.", leader: "Scout's Eye — Thunder allies gain 7% critical rate.", burstDoesDamage: true, maxLevel: 25, statMultiplier: 0.48, statGrowth: { hp: 0.007, atk: 0.0105, def: 0.0065, rec: 0.008 }, ascension: { seals: 1, cores: 4 } },
+    3: { attackName: "Crosswind Volley", burstName: "Cyclone Quiver", attackScope: "single", burstScope: "single", attackMultiplier: 1.08, burstMultiplier: 2.7, burstHits: 8, gaugeGain: 42, healRatio: 0, cleanse: false, burstBuff: "HASTE", burstDescription: "8-hit ranged cyclone volley that grants Haste.", leader: "Galebow Tempo — Spark windows and Burst gain are moderately increased.", burstDoesDamage: true, maxLevel: 45, statMultiplier: 0.68, statGrowth: { hp: 0.0075, atk: 0.0115, def: 0.007, rec: 0.0085 }, ascension: { seals: 2, cores: 7 } },
+    4: { attackName: "Thunderhead Arc", burstName: "Stormwheel Barrage", attackScope: "single", burstScope: "all", attackMultiplier: 1.17, burstMultiplier: 3.12, burstHits: 12, gaugeGain: 48, healRatio: 0, cleanse: false, burstBuff: "HASTE", burstDescription: "12-hit ranged lightning barrage across all foes; grants Haste.", leader: "Tempest Pursuit — all allies gain 16% critical damage and faster Burst gain.", burstDoesDamage: true, maxLevel: 65, statMultiplier: 0.86, statGrowth: { hp: 0.008, atk: 0.0125, def: 0.0075, rec: 0.009 }, ascension: { seals: 5, cores: 12 } },
+    5: { attackName: "Horizon Piercer", burstName: "Heavenfall Constellation", attackScope: "single", burstScope: "all", attackMultiplier: 1.1, burstMultiplier: 3.66, burstHits: 20, gaugeGain: 56, healRatio: 0, cleanse: false, burstBuff: "SKYHUNT", burstDescription: "20-hit ranged storm constellation rains arrows on every foe.", leader: "Skybreak Hunt — all allies gain 24% critical damage and greatly increased Burst gain.", burstDoesDamage: true, maxLevel: 90, statMultiplier: 1.08, statGrowth: { hp: 0.0085, atk: 0.014, def: 0.008, rec: 0.0095 }, ascension: { seals: 0, cores: 0 } },
   },
   solenne: {
-    2: { attackName: "Dawn Ray", burstName: "First Blessing", attackScope: "single", burstScope: "all", attackMultiplier: 0.86, burstMultiplier: 0, burstHits: 4, gaugeGain: 38, healRatio: 0.14, cleanse: false, burstBuff: "REC UP", burstDescription: "A non-damaging blessing that heals all allies and raises recovery.", leader: "Kindled Dawn — all allies gain 7% recovery.", burstDoesDamage: false, maxLevel: 25, statMultiplier: 0.5, statGrowth: { hp: 0.008, atk: 0.0065, def: 0.008, rec: 0.011 }, ascension: { seals: 1, cores: 4 } },
-    3: { attackName: "Sunthread Beam", burstName: "Sunwell Grace", attackScope: "single", burstScope: "all", attackMultiplier: 0.96, burstMultiplier: 0, burstHits: 4, gaugeGain: 44, healRatio: 0.2, cleanse: false, burstBuff: "REGEN", burstDescription: "A non-damaging sunwell heal that grants regeneration to all allies.", leader: "Sunwell Song — all allies gain 11% HP and recovery.", burstDoesDamage: false, maxLevel: 45, statMultiplier: 0.7, statGrowth: { hp: 0.0085, atk: 0.007, def: 0.0085, rec: 0.012 }, ascension: { seals: 2, cores: 7 } },
-    4: { attackName: "Prism Lattice", burstName: "Sanctuary Chorus", attackScope: "single", burstScope: "all", attackMultiplier: 0.92, burstMultiplier: 0, burstHits: 4, gaugeGain: 50, healRatio: 0.27, cleanse: true, burstBuff: "BARRIER", burstDescription: "A non-damaging sanctuary heal, ailment cleanse, and protective Barrier.", leader: "Radiant Chorus — all allies gain 17% HP, recovery, and ailment resistance.", burstDoesDamage: false, maxLevel: 65, statMultiplier: 0.88, statGrowth: { hp: 0.009, atk: 0.0075, def: 0.009, rec: 0.0135 }, ascension: { seals: 5, cores: 12 } },
-    5: { attackName: "Aurora Lance", burstName: "Covenant of Dawn", attackScope: "single", burstScope: "all", attackMultiplier: 0.98, burstMultiplier: 0, burstHits: 4, gaugeGain: 58, healRatio: 0.36, cleanse: true, burstBuff: "RADIANT WARD", burstDescription: "A non-damaging major heal, full cleanse, regeneration, and Radiant Ward.", leader: "Everlasting Dawn — all allies gain 25% HP and greatly increased healing.", burstDoesDamage: false, maxLevel: 90, statMultiplier: 1.06, statGrowth: { hp: 0.01, atk: 0.008, def: 0.01, rec: 0.015 }, ascension: { seals: 0, cores: 0 } },
+    2: { attackName: "Dawn Ray", burstName: "First Blessing", attackScope: "single", burstScope: "all", attackMultiplier: 0.86, burstMultiplier: 0, burstHits: 6, gaugeGain: 38, healRatio: 0.14, cleanse: false, burstBuff: "REC UP", burstDescription: "A non-damaging blessing that heals all allies and raises recovery.", leader: "Kindled Dawn — all allies gain 7% recovery.", burstDoesDamage: false, maxLevel: 25, statMultiplier: 0.5, statGrowth: { hp: 0.008, atk: 0.0065, def: 0.008, rec: 0.011 }, ascension: { seals: 1, cores: 4 } },
+    3: { attackName: "Sunthread Beam", burstName: "Sunwell Grace", attackScope: "single", burstScope: "all", attackMultiplier: 0.96, burstMultiplier: 0, burstHits: 8, gaugeGain: 44, healRatio: 0.2, cleanse: false, burstBuff: "REGEN", burstDescription: "A non-damaging sunwell heal that grants regeneration to all allies.", leader: "Sunwell Song — all allies gain 11% HP and recovery.", burstDoesDamage: false, maxLevel: 45, statMultiplier: 0.7, statGrowth: { hp: 0.0085, atk: 0.007, def: 0.0085, rec: 0.012 }, ascension: { seals: 2, cores: 7 } },
+    4: { attackName: "Prism Lattice", burstName: "Sanctuary Chorus", attackScope: "single", burstScope: "all", attackMultiplier: 0.92, burstMultiplier: 0, burstHits: 12, gaugeGain: 50, healRatio: 0.27, cleanse: true, burstBuff: "BARRIER", burstDescription: "A non-damaging sanctuary heal, ailment cleanse, and protective Barrier.", leader: "Radiant Chorus — all allies gain 17% HP, recovery, and ailment resistance.", burstDoesDamage: false, maxLevel: 65, statMultiplier: 0.88, statGrowth: { hp: 0.009, atk: 0.0075, def: 0.009, rec: 0.0135 }, ascension: { seals: 5, cores: 12 } },
+    5: { attackName: "Aurora Lance", burstName: "Covenant of Dawn", attackScope: "single", burstScope: "all", attackMultiplier: 0.98, burstMultiplier: 0, burstHits: 14, gaugeGain: 58, healRatio: 0.36, cleanse: true, burstBuff: "RADIANT WARD", burstDescription: "A non-damaging major heal, full cleanse, regeneration, and Radiant Ward.", leader: "Everlasting Dawn — all allies gain 25% HP and greatly increased healing.", burstDoesDamage: false, maxLevel: 90, statMultiplier: 1.06, statGrowth: { hp: 0.01, atk: 0.008, def: 0.01, rec: 0.015 }, ascension: { seals: 0, cores: 0 } },
   },
   nyx: {
-    2: { attackName: "Dusk Reap", burstName: "Hollow Moon", attackScope: "single", burstScope: "single", attackMultiplier: 1, burstMultiplier: 2.32, burstHits: 4, gaugeGain: 35, healRatio: 0, cleanse: false, burstBuff: "", burstDescription: "4-hit shadow crescent focused on one foe.", leader: "Shade's Edge — Dark allies gain 8% ATK.", burstDoesDamage: true, maxLevel: 25, statMultiplier: 0.49, statGrowth: { hp: 0.0075, atk: 0.011, def: 0.0065, rec: 0.0075 }, ascension: { seals: 1, cores: 4 } },
-    3: { attackName: "Gloamstep Cut", burstName: "Eclipse Snare", attackScope: "single", burstScope: "single", attackMultiplier: 1.1, burstMultiplier: 2.78, burstHits: 6, gaugeGain: 41, healRatio: 0, cleanse: false, burstBuff: "VEIL", burstDescription: "6-hit blink reaping art that grants Veil.", leader: "Umbral Pursuit — Dark allies gain 12% ATK and critical damage.", burstDoesDamage: true, maxLevel: 45, statMultiplier: 0.69, statGrowth: { hp: 0.008, atk: 0.012, def: 0.007, rec: 0.008 }, ascension: { seals: 2, cores: 7 } },
-    4: { attackName: "Nightglass Sever", burstName: "Black Crescent Prison", attackScope: "single", burstScope: "single", attackMultiplier: 1.2, burstMultiplier: 3.2, burstHits: 9, gaugeGain: 47, healRatio: 0, cleanse: false, burstBuff: "VEIL", burstDescription: "9-hit eclipsing prison with a defence-breaking final cut.", leader: "Eclipse Law — all allies gain 17% critical damage; Dark attacks pierce defence.", burstDoesDamage: true, maxLevel: 65, statMultiplier: 0.87, statGrowth: { hp: 0.0085, atk: 0.013, def: 0.0075, rec: 0.0085 }, ascension: { seals: 5, cores: 12 } },
-    5: { attackName: "Eventide Execution", burstName: "Zero-Moon Dominion", attackScope: "single", burstScope: "all", attackMultiplier: 1.12, burstMultiplier: 3.72, burstHits: 12, gaugeGain: 54, healRatio: 0, cleanse: false, burstBuff: "ABYSS", burstDescription: "12-hit zero-moon dominion across all foes with a defence-piercing finisher.", leader: "Abyssal Crown — all allies gain 25% critical damage; final Burst hits pierce defence.", burstDoesDamage: true, maxLevel: 90, statMultiplier: 1.08, statGrowth: { hp: 0.009, atk: 0.0145, def: 0.008, rec: 0.009 }, ascension: { seals: 0, cores: 0 } },
+    2: { attackName: "Dusk Reap", burstName: "Hollow Moon", attackScope: "single", burstScope: "single", attackMultiplier: 1, burstMultiplier: 2.32, burstHits: 6, gaugeGain: 35, healRatio: 0, cleanse: false, burstBuff: "", burstDescription: "6-hit shadow crescent focused on one foe.", leader: "Shade's Edge — Dark allies gain 8% ATK.", burstDoesDamage: true, maxLevel: 25, statMultiplier: 0.49, statGrowth: { hp: 0.0075, atk: 0.011, def: 0.0065, rec: 0.0075 }, ascension: { seals: 1, cores: 4 } },
+    3: { attackName: "Gloamstep Cut", burstName: "Eclipse Snare", attackScope: "single", burstScope: "single", attackMultiplier: 1.1, burstMultiplier: 2.78, burstHits: 8, gaugeGain: 41, healRatio: 0, cleanse: false, burstBuff: "VEIL", burstDescription: "8-hit blink reaping art that grants Veil.", leader: "Umbral Pursuit — Dark allies gain 12% ATK and critical damage.", burstDoesDamage: true, maxLevel: 45, statMultiplier: 0.69, statGrowth: { hp: 0.008, atk: 0.012, def: 0.007, rec: 0.008 }, ascension: { seals: 2, cores: 7 } },
+    4: { attackName: "Nightglass Sever", burstName: "Black Crescent Prison", attackScope: "single", burstScope: "single", attackMultiplier: 1.2, burstMultiplier: 3.2, burstHits: 12, gaugeGain: 47, healRatio: 0, cleanse: false, burstBuff: "VEIL", burstDescription: "12-hit eclipsing prison with a defence-breaking final cut.", leader: "Eclipse Law — all allies gain 17% critical damage; Dark attacks pierce defence.", burstDoesDamage: true, maxLevel: 65, statMultiplier: 0.87, statGrowth: { hp: 0.0085, atk: 0.013, def: 0.0075, rec: 0.0085 }, ascension: { seals: 5, cores: 12 } },
+    5: { attackName: "Eventide Execution", burstName: "Zero-Moon Dominion", attackScope: "single", burstScope: "all", attackMultiplier: 1.12, burstMultiplier: 3.72, burstHits: 22, gaugeGain: 54, healRatio: 0, cleanse: false, burstBuff: "ABYSS", burstDescription: "22-hit zero-moon dominion across all foes with a defence-piercing finisher.", leader: "Abyssal Crown — all allies gain 25% critical damage; final Burst hits pierce defence.", burstDoesDamage: true, maxLevel: 90, statMultiplier: 1.08, statGrowth: { hp: 0.009, atk: 0.0145, def: 0.008, rec: 0.009 }, ascension: { seals: 0, cores: 0 } },
   },
 };
 
@@ -956,18 +956,6 @@ function getNormalCastSequence(unitId: BattleUnitId, stars: StarTier) {
   ];
 }
 
-function showsZephyraProjectile(stage: AttackStage) {
-  return stage === "release" || stage === "flight" || stage === "impact" || stage === "hitstop" || stage === "recover";
-}
-
-function showsZephyraBowLightning(stage: AttackStage) {
-  return stage !== "approach" && stage !== "return";
-}
-
-function showsSolenneBeam(stage: AttackStage) {
-  return stage === "impact" || stage === "hitstop" || stage === "recover";
-}
-
 const normalisedChainCache = new Map<string, readonly NormalAttackBeat[]>();
 
 function normaliseChain(cacheKey: string, chain: readonly NormalAttackBeat[]): readonly NormalAttackBeat[] {
@@ -993,12 +981,18 @@ function getNormalAttackChain(unit: Unit, stars: StarTier): readonly NormalAttac
     nyx: { 2: 3, 3: 5, 4: 7, 5: 9 },
   };
   const hitCount = tierHits[unit.id][stars];
-  const chain = Array.from({ length: hitCount }, (_, index) => ({
-    frame: index === hitCount - 1 ? 3 : 2,
-    multiplier: index === hitCount - 1 ? 1.45 : 1,
-    pose: 0,
-    tick: index,
-  }));
+  const chain = Array.from({ length: hitCount }, (_, index) => {
+    const isLast = index === hitCount - 1;
+    return {
+      // Cycle through all 4 authored attack frames instead of sitting on one
+      // repeated frame — every hit but the finisher rotates 0/1/2, and the
+      // finisher lands on the dedicated impact frame (3).
+      frame: isLast ? 3 : index % 3,
+      multiplier: isLast ? 1.45 : 1,
+      pose: 0,
+      tick: index,
+    };
+  });
   return normaliseChain(`${unit.id}-${stars}`, chain);
 }
 
@@ -1251,12 +1245,12 @@ const defaultSave: SaveState = {
   arenaOrbs: 3,
   arenaRank: 118,
   lastArenaAt: Date.now(),
-  owned: ["kael", "lyra", "brannock", "zephyra", "solenne"],
-  party: ["kael", "lyra", "brannock", "zephyra", "solenne"],
-  unitLevels: { kael: 22, lyra: 20, brannock: 21, zephyra: 18, solenne: 18 },
-  unitStars: { kael: 5, lyra: 5, brannock: 5, zephyra: 5, solenne: 5 },
-  unitXp: { kael: 240, lyra: 180, brannock: 210, zephyra: 120, solenne: 120 },
-  burstLevels: { kael: 4, lyra: 4, brannock: 3, zephyra: 3, solenne: 3 },
+  owned: ["kael", "lyra", "nyx", "zephyra", "solenne"],
+  party: ["kael", "lyra", "nyx", "zephyra", "solenne"],
+  unitLevels: { kael: 22, lyra: 20, nyx: 21, zephyra: 18, solenne: 18 },
+  unitStars: { kael: 5, lyra: 5, nyx: 5, zephyra: 5, solenne: 5 },
+  unitXp: { kael: 240, lyra: 180, nyx: 210, zephyra: 120, solenne: 120 },
+  burstLevels: { kael: 4, lyra: 4, nyx: 3, zephyra: 3, solenne: 3 },
   completed: [],
   unlockedStage: 1,
   potions: 3,
@@ -1267,13 +1261,13 @@ const defaultSave: SaveState = {
   lastEnergyAt: Date.now(),
   materials: { aether: 46, ember: 14, tide: 14, grove: 14, storm: 14, radiance: 14, umbral: 10, seal: 7, relicDust: 22 },
   relics: ["Moonstone Edge", "Rootbound Crest", "Tideglass Charm"],
-  equippedRelics: { kael: "Moonstone Edge", brannock: "Rootbound Crest", lyra: "Tideglass Charm" },
+  equippedRelics: { kael: "Moonstone Edge", nyx: "Rootbound Crest", lyra: "Tideglass Charm" },
   covenantPoints: 820,
   summonPity: 2,
   summonHistory: [],
   squads: [
-    ["kael", "lyra", "brannock", "zephyra", "solenne"],
-    ["brannock", "lyra", "kael"],
+    ["kael", "lyra", "nyx", "zephyra", "solenne"],
+    ["nyx", "lyra", "kael"],
     ["zephyra", "solenne", "kael"],
   ],
   activeSquad: 0,
@@ -1561,11 +1555,8 @@ function StableBattleFrame({ src, className }: { src: string; className: string 
   return <img className={className} src={displayedSrc} alt="" draggable={false} data-frame-ready="true" />;
 }
 
-/* BurstAnimationCanvas removed: it was a from-scratch Canvas2D 88-particle
-   draw loop duplicating ElementalBurstLayer's job in a second renderer.
-   Bursts now render through BurstRemotionOverlay only (called directly
-   where this component used to be invoked). See app/globals.css for the
-   corresponding removal of .burst-signature / .burst-animation-canvas. */
+/* Procedural attack and Burst VFX are intentionally absent. Burst presentation
+   uses the cinematic cut-in, followed by the authored progressive sprite frames. */
 
 const FIVE_STAR_IDLE_TIMING: Record<BattleUnitId, { milliseconds: number; startFrame: number }> = {
   kael: { milliseconds: 360, startFrame: 0 },
@@ -2777,11 +2768,13 @@ export default function GatesOfAzura() {
     }]);
     playSfx(burst ? "burst" : "tap");
     if (burst) {
-      // Keep combat parked until the named Burst illustration has fully faded.
+      // Keep the named character intro, then hand straight to the authored
+      // sprite anticipation. The old battlefield VFX and Kael video remain
+      // removed and do not play underneath it.
       await waitForBattle(760);
       setAttackFxs((current) => current.map((fx) => fx.id === attackId ? { ...fx, phase: "burst", stage: "approach" } : fx));
       playSfx("burst");
-      await waitForBattle(180);
+      await waitForBattle(90);
     } else {
       await waitForBattle(180);
     }
@@ -2803,14 +2796,63 @@ export default function GatesOfAzura() {
       const nextNormalBeat = step < animationSteps - 1 ? normalAttackChain[Math.min(step + 1, normalAttackChain.length - 1)] : null;
       const startsNormalPose = !burst && (!previousNormalBeat || previousNormalBeat.pose !== normalBeat.pose);
       const endsNormalPose = !burst && (!nextNormalBeat || nextNormalBeat.pose !== normalBeat.pose);
+      // A Burst now owns a complete rarity-scaled timeline instead of using
+      // four attack-like drawings as a hit counter. The opening anticipation
+      // frames play before the first damage packet, the middle action frames
+      // advance across every hit, and the final anchored recovery plays after
+      // the last packet. This keeps damage unchanged while giving higher forms
+      // more genuine animation.
+      const burstOpeningFrames = Math.max(1, Math.round(battleSprites.burst.length * 0.18));
+      const burstRecoveryFrames = Math.max(2, Math.round(battleSprites.burst.length * 0.18));
+      const burstActionStart = burstOpeningFrames;
+      const burstActionEnd = Math.max(burstActionStart, battleSprites.burst.length - burstRecoveryFrames - 1);
+      const burstActionSpan = Math.max(1, burstActionEnd - burstActionStart + 1);
+      const previousBurstFrame = step > 0
+        ? Math.min(
+            burstActionEnd,
+            burstActionStart + Math.floor((step - 1) * Math.max(1, burstActionEnd - burstActionStart) / Math.max(1, animationSteps - 1)),
+          )
+        : burstActionStart - 1;
       const attackFrame = burst
-        ? Math.min(battleSprites.burst.length - 1, Math.floor(step * battleSprites.burst.length / animationSteps))
+        ? Math.min(
+            burstActionEnd,
+            burstActionStart + Math.floor(step * Math.max(1, burstActionEnd - burstActionStart) / Math.max(1, animationSteps - 1)),
+          )
         : normalBeat.frame;
       // Every authored unit now opens each damage packet with its own drawn
       // wind-up. Zephyra plays a full bow draw, Solenne a planted invocation,
       // and the melee units their own lunge, turning step, shouldered heave or
       // blink. One table drives all of them.
       const castSequence = !burst && startsNormalPose ? getNormalCastSequence(unit.id, stars) : undefined;
+      if (burst && step === 0) {
+        for (const frame of Array.from({ length: burstOpeningFrames }, (_, index) => index)) {
+          setAttackFxs((current) => current.map((fx) => fx.id === attackId ? {
+            ...fx,
+            frame,
+            volley: 0,
+            targetEnemyId: visualTargetId,
+            stage: frame === 0 ? "windup" : "release",
+          } : fx));
+          await waitForBattle(frame === 0 ? 88 : 64);
+        }
+      }
+      if (burst) {
+        // When a form owns more drawings than damage packets, show every
+        // intermediate action pose before the next packet rather than skipping
+        // directly to the contact drawing. The highest rarities therefore gain
+        // visible motion, not merely a larger asset list.
+        const burstActionFrameStart = Math.max(burstActionStart, previousBurstFrame + 1);
+        for (const frame of Array.from({ length: Math.max(0, attackFrame - burstActionFrameStart) }, (_, index) => burstActionFrameStart + index)) {
+          setAttackFxs((current) => current.map((fx) => fx.id === attackId ? {
+            ...fx,
+            frame,
+            volley: step,
+            targetEnemyId: visualTargetId,
+            stage: frame < burstActionStart + burstActionSpan / 2 ? "release" : "flight",
+          } : fx));
+          await waitForBattle(46);
+        }
+      }
       if (castSequence) {
         for (const drawing of castSequence) {
           setAttackFxs((current) => current.map((fx) => fx.id === attackId ? {
@@ -2845,6 +2887,12 @@ export default function GatesOfAzura() {
         } : fx));
         await waitForBattle(burst ? 55 : rapidNormalChain ? startsNormalPose ? 42 : 10 : 65);
       }
+      // Zephyra's Burst is one piercing volley: the arrow keeps flying
+      // through every authored pose and only lands as a single full-force
+      // hit per foe on the final frame, instead of splitting damage across
+      // each intermediate pose the way every other unit's combo does.
+      const isZephyraBurstVolley = burst && unit.id === "zephyra";
+      const landsThisStep = !isZephyraBurstVolley || step === animationSteps - 1;
       const supportBurst = burst && !combatProfile.burstDoesDamage;
       const sparkTargets = supportBurst ? new Set<string>() : await resolveSparkFrame(unitId, targets.map((target) => target.instanceId));
       const critical = !supportBurst && Math.random() < CRITICAL_CHANCE;
@@ -2859,7 +2907,7 @@ export default function GatesOfAzura() {
         const variance = 0.93 + Math.random() * 0.14;
         const spark = sparkTargets.has(target.instanceId);
         const wasAlive = target.hp > 0;
-        const hitMultiplier = burst ? 1 / animationSteps : normalBeat.multiplier;
+        const hitMultiplier = burst ? (isZephyraBurstVolley ? 1 : 1 / animationSteps) : normalBeat.multiplier;
         const damage = burst && !combatProfile.burstDoesDamage
           ? 0
           : Math.max(1, Math.round(totalBase * hitMultiplier * advantage * variance * (critical ? CRITICAL_DAMAGE_MULTIPLIER : 1) * (spark ? SPARK_DAMAGE_MULTIPLIER : 1)));
@@ -2867,6 +2915,12 @@ export default function GatesOfAzura() {
         const kind: CrystalKind = killed ? (enemy.boss ? "material" : "gold") : heartDrop && targetIndex === 0 ? "heart" : "burst";
         return { target, enemy, advantage, damage, killed, kind, spark, wasAlive, fxId: `${attackId}-hit-${step}-${target.instanceId}` };
       });
+
+      if (!landsThisStep) {
+        setAttackFxs((current) => current.map((fx) => fx.id === attackId ? { ...fx, stage: "release" } : fx));
+        await waitForBattle(burst ? 18 : rapidNormalChain ? 12 : 22);
+        continue;
+      }
 
       if (anySpark) lastSparkAt.current = now;
 
@@ -2991,6 +3045,17 @@ export default function GatesOfAzura() {
       );
     }
 
+    if (burst) {
+      const recoveryStart = Math.max(0, battleSprites.burst.length - Math.max(2, Math.round(battleSprites.burst.length * 0.18)));
+      for (const frame of Array.from({ length: Math.max(0, battleSprites.burst.length - recoveryStart) }, (_, index) => recoveryStart + index)) {
+        setAttackFxs((current) => current.map((fx) => fx.id === attackId ? {
+          ...fx,
+          frame,
+          stage: frame === battleSprites.burst.length - 1 ? "anchored" : "recover",
+        } : fx));
+        await waitForBattle(frame === battleSprites.burst.length - 1 ? 120 : 54);
+      }
+    }
     const resolved = battleRef.current;
     if (resolved) updateBattleLive((state) => ({ ...state, message: `${unit.name} completes ${burst ? combatProfile.burstName : combatProfile.attackName}. Tap another unit—overlap attacks to Spark.` }));
     setAttackFxs((current) => current.map((fx) => fx.id === attackId ? { ...fx, stage: "return" } : fx));
@@ -3638,17 +3703,13 @@ export default function GatesOfAzura() {
           : battleStageSrc.includes("reliquary")
             ? "reliquary"
             : "causeway";
-    const activeBurstFxs = attackFxs.filter((fx) => fx.phase === "burst");
-    const activeBurstFx = activeBurstFxs[activeBurstFxs.length - 1];
-    const activeBurstUnit = activeBurstFx ? getUnit(activeBurstFx.unitId) : null;
     const burstIntroFxs = attackFxs.filter((fx) => fx.phase === "burst-intro");
     const burstIntroFx = burstIntroFxs[burstIntroFxs.length - 1];
     const burstIntroUnit = burstIntroFx ? getUnit(burstIntroFx.unitId) : null;
-    const kaelBurstScreenFx = attackFxs.find((fx) => fx.unitId === "kael" && (fx.phase === "burst-intro" || fx.phase === "burst"));
     const actionLocked = autoTurnActive || enemyTurnLock.current || battleFlowLock.current || combatFx.phase === "enemy" || combatFx.phase === "opening" || combatFx.phase === "wave";
     return (
       <div
-        className={`battle-screen battle-${targetedEnemy.element} battle-speed-${battleSpeed} fx-${combatFx.phase} ${activeBurstUnit ? `burst-unit-${activeBurstUnit.id}` : ""}`}
+        className={`battle-screen battle-${targetedEnemy.element} battle-speed-${battleSpeed} fx-${combatFx.phase}`}
         style={{ "--battle-time-scale": getBattleTimeScale(battleSpeed) } as CSSProperties}
       >
         <header className="battle-header">
@@ -3673,20 +3734,6 @@ export default function GatesOfAzura() {
           <AnimatedBattleStage stageId={stageId} stageSrc={battleStageSrc} />
           <img className={`stage-background stage-poster ${stageId === "field" ? "stage-poster-sunpetal" : ""}`} src={battleStageSrc} alt={`${quest.location} battle stage`} draggable={false} style={stageId === "field" ? { objectPosition: "center 25%" } : undefined} />
           <div className={`stage-atmosphere ${stageId === "field" ? "stage-atmosphere-sunpetal" : ""}`} />
-          {kaelBurstScreenFx && (
-            <video
-              key={`kael-battlefield-source-${kaelBurstScreenFx.id}`}
-              className="kael-burst-fullscreen-source"
-              src="/effects/bursts/kael/fullscreen-embers.mp4"
-              autoPlay
-              loop
-              muted
-              playsInline
-              preload="auto"
-              ref={(video) => { if (video) video.playbackRate = getBattlePlaybackRate(battleSpeed); }}
-              aria-hidden="true"
-            />
-          )}
           <div
             className="battlefield-stage-frame"
             style={{
@@ -3714,12 +3761,6 @@ export default function GatesOfAzura() {
               const isAttacking = member.instanceId === combatFx.activeEnemyId && combatFx.phase === "enemy";
               const isDefeated = member.hp <= 0;
               const isHeldForChain = isDefeated && attackFxs.some((fx) => fx.scope === "single" && fx.targetEnemyId === member.instanceId);
-              const solenneBeamFx = attackFxs.find((fx) => (
-                fx.unitId === "solenne"
-                && fx.phase === "attack"
-                && fx.targetEnemyId === member.instanceId
-                && showsSolenneBeam(fx.stage)
-              ));
               const staggerFx = damageFxs.filter((fx) => fx.targetEnemyId === member.instanceId).at(-1);
               const contactOffset = staggerFx ? getWeaponContactOffset(staggerFx.unitId, staggerFx.hit, staggerFx.burst) : null;
               const stagger = staggerFx && contactOffset ? getEnemyStaggerProfile({
@@ -3755,18 +3796,10 @@ export default function GatesOfAzura() {
                   aria-pressed={isTargeted}
                   aria-label={`${enemy.name}${isTargeted ? ", focused. Tap again to clear focus" : ", tap to focus single-target attacks"}`}
                 >
-                  {solenneBeamFx && (
-                    <span
-                      key={`${solenneBeamFx.id}-beam-${solenneBeamFx.volley}`}
-                      className={`solenne-judgement-beam solenne-beam-stage-${solenneBeamFx.stage}`}
-                      aria-hidden="true"
-                    ><i /><b /><em /></span>
-                  )}
                   <span className="enemy-stagger-rig" key={staggerFx?.id ?? `${member.instanceId}-rest`}>
                     <span className="enemy-aura" />
                     <img className="enemy-sprite" src={enemy.sprite} alt="" draggable={false} />
                   </span>
-                  {staggerFx && <span className="enemy-contact-pin" key={`contact-${staggerFx.id}`} aria-hidden="true" />}
                   {member.ailments.length > 0 && <span className="enemy-ailments">{member.ailments.slice(0, 2).map((ailment) => <i key={ailment}>{ailment}</i>)}</span>}
                   {isTargeted && <span className="target-lock" aria-hidden="true"><Target /><small>FOCUS</small></span>}
                 </button>
@@ -3784,21 +3817,6 @@ export default function GatesOfAzura() {
               const stars = save.unitStars[unit.id] ?? 3;
               const rangedAdvanceX = Math.round((attackFx?.contactX ?? 0) * ZEPHYRA_RANGED_ADVANCE);
               const rangedAdvanceY = Math.round((attackFx?.contactY ?? 0) * ZEPHYRA_RANGED_ADVANCE);
-              const arrowTravelX = (attackFx?.contactX ?? 0) - rangedAdvanceX - 18;
-              const arrowTravelY = (attackFx?.contactY ?? 0) - rangedAdvanceY;
-              const arrowAngle = Math.atan2(arrowTravelY, arrowTravelX) * 180 / Math.PI - 180;
-              const showProjectile = Boolean(
-                attackFx
-                && attackFx.phase === "attack"
-                && unit.id === "zephyra"
-                && showsZephyraProjectile(attackFx.stage),
-              );
-              const showBowLightning = Boolean(
-                attackFx
-                && attackFx.phase === "attack"
-                && unit.id === "zephyra"
-                && showsZephyraBowLightning(attackFx.stage),
-              );
               return (
                 <div
                   key={`${unit.id}-${index}`}
@@ -3809,9 +3827,6 @@ export default function GatesOfAzura() {
                     "--contact-y": `${attackFx?.contactY ?? 0}px`,
                     "--ranged-x": `${rangedAdvanceX}px`,
                     "--ranged-y": `${rangedAdvanceY}px`,
-                    "--arrow-travel-x": `${arrowTravelX}px`,
-                    "--arrow-travel-y": `${arrowTravelY}px`,
-                    "--arrow-angle": `${arrowAngle}deg`,
                   } as CSSProperties}
                 >
                   <span className="field-unit-shadow" />
@@ -3821,20 +3836,6 @@ export default function GatesOfAzura() {
                     mode={spriteMode}
                     attackFrame={attackFx?.frame ?? 0}
                   />
-                  {showBowLightning && attackFx && (
-                    <span
-                      key={`${attackFx.id}-storm-${attackFx.volley}`}
-                      className={`zephyra-bow-lightning lightning-stage-${attackFx.stage}`}
-                      aria-hidden="true"
-                    >{Array.from({ length: 3 }, (_, arc) => <i key={arc} />)}</span>
-                  )}
-                  {showProjectile && attackFx && (
-                    <span
-                      key={`${attackFx.id}-volley-${attackFx.volley}`}
-                      className="zephyra-arrow-flight"
-                      aria-hidden="true"
-                    ><i /></span>
-                  )}
                   <span className="field-unit-aura" />
                   {isTarget && combatFx.phase === "enemy" && <span className="target-damage">-{combatFx.damage.toLocaleString()}</span>}
                   {member.guarding && <span className="guard-sigil"><Shield /></span>}
@@ -3844,68 +3845,6 @@ export default function GatesOfAzura() {
               );
             })}
           </div>
-
-          {/* The per-hit .attack-frame-transition streak was removed: a 190px
-              near-white bar in screen blend mode sat across the contact point on
-              every single hit, washing out the artwork it was meant to punctuate.
-              Contact is now read from the enemy pin, stagger and elemental VFX. */}
-
-          {/* Previously every burst rendered THREE independent, fully overlapping
-              VFX systems at once: this CSS .burst-signature flourish (border/
-              clip-path shapes), a from-scratch Canvas2D 88-particle draw loop
-              inside BurstAnimationCanvas, and the Remotion composition below it.
-              All three drew the same moment in different techniques, which is
-              why bursts read as visual noise rather than one clear effect.
-              Consolidated onto the Remotion layer, which now owns the full
-              charge -> hits -> finisher arc procedurally per element (see
-              ElementalBurstLayer and BurstFinisherFlourish in BattleVfx.tsx) and
-              carries each unit's distinct silhouette that .burst-signature used
-              to provide, without three renderers fighting for the same pixels. */}
-          {activeBurstFxs.map((burstFx) => {
-            const burstUnit = getUnit(burstFx.unitId);
-            const burstStars = save.unitStars[burstUnit.id] ?? 3;
-            const burstProfile = getUnitCombatProfile(burstUnit, burstStars);
-            const finisher = burstFx.volley >= burstFx.hits - 1;
-            const burstTargetIndex = Math.max(0, battle.enemies.findIndex((enemy) => enemy.instanceId === burstFx.targetEnemyId));
-            const targetPosition = ENEMY_FORMATIONS[battle.enemies.length]?.[burstTargetIndex] ?? ENEMY_FORMATIONS[2][0];
-            return (
-              <Fragment key={`burst-${burstFx.id}`}>
-                <BurstRemotionOverlay
-                  instanceId={burstFx.id}
-                  unitId={burstUnit.id}
-                  stars={burstStars}
-                  hitCount={burstFx.hits}
-                  speed={battleSpeed}
-                  targetLeft={targetPosition.left}
-                  targetBottom={targetPosition.bottom}
-                  reducedEffects={gameSettings.reducedEffects}
-                />
-                {finisher && burstFx.stage !== "windup" && (
-                  <span className="burst-finisher-mark" aria-hidden="true"><strong>{burstProfile.burstDoesDamage ? "FINAL" : "RESTORE"}</strong><small>{burstProfile.burstName}</small></span>
-                )}
-              </Fragment>
-            );
-          })}
-
-          {damageFxs.filter((fx) => !fx.burst).map((fx) => {
-            const targetIndex = Math.max(0, battle.enemies.findIndex((enemy) => enemy.instanceId === fx.targetEnemyId));
-            const targetPosition = ENEMY_FORMATIONS[battle.enemies.length]?.[targetIndex] ?? ENEMY_FORMATIONS[2][0];
-            return (
-              <AttackImpactOverlay
-                key={`attack-impact-${fx.id}`}
-                instanceId={fx.id}
-                unitId={fx.unitId}
-                stars={save.unitStars[fx.unitId] ?? 3}
-                speed={battleSpeed}
-                targetLeft={targetPosition.left}
-                targetBottom={targetPosition.bottom}
-                hitIndex={fx.hit}
-                reducedEffects={gameSettings.reducedEffects}
-                critical={fx.critical}
-                spark={fx.spark}
-              />
-            );
-          })}
 
           {damageFxs.map((fx) => {
             const targetIndex = Math.max(0, battle.enemies.findIndex((enemy) => enemy.instanceId === fx.targetEnemyId));
@@ -3934,24 +3873,151 @@ export default function GatesOfAzura() {
             const numeralSlot = Math.max(0, fx.hit - 1) % 6;
             const numeralDriftX = [0, 13, -11, 7, -15, 4][numeralSlot];
             const numeralDriftY = [0, -9, -5, -15, -2, -12][numeralSlot];
-            return <div
-              className={`impact-stack concurrent-impact impact-count-${battle.enemies.length} impact-target-${targetIndex + 1} impact-${sourceUnit.element} impact-unit-${sourceUnit.id} burst-impact-frame-${fx.frame} ${fx.burst ? "burst-impact" : ""} ${fx.finisher ? "finisher-impact" : ""} ${fx.spark ? "spark-hit" : ""} ${fx.critical ? "critical-hit" : ""}`}
-              key={fx.id}
-              style={{
-                left: `${weaponContact.x - 50}px`,
-                top: `${weaponContact.y - 50}px`,
-                bottom: "auto",
-                "--numeral-drift-x": `${numeralDriftX}px`,
-                "--numeral-drift-y": `${numeralDriftY}px`,
-              } as CSSProperties}
-            >
-              {gameSettings.damageNumbers && <>
-                <strong>{fx.damage.toLocaleString()}</strong>
-                {impactLabel && <small>{impactLabel}</small>}
-                {fx.weakness && <em>WEAKNESS</em>}
-              </>}
-            </div>;
+            // Zephyra's shots are a real projectile: computed from her own
+            // field position to the exact contact point so the arrow both
+            // travels and faces whatever it is currently flying at. Her
+            // Burst volley overshoots past the contact point instead of
+            // stopping dead on the connecting pose, reading as one arrow
+            // punching through the whole formation.
+            const zephyraAllBurst = sourceUnit.id === "zephyra" && fx.burst
+              && getUnitStarProfile("zephyra", save.unitStars.zephyra ?? 3).burstScope === "all";
+            const zephyraShot = sourceUnit.id === "zephyra" && !zephyraAllBurst ? (() => {
+              const casterIndex = Math.max(0, battle.party.findIndex((member) => member.id === fx.unitId));
+              const casterSlot = HERO_FORMATION[casterIndex] ?? HERO_FORMATION[0];
+              const casterX = battlefieldWidth - casterSlot.right - casterSlot.width / 2;
+              const casterY = 355 - casterSlot.bottom - 70;
+              const overshoot = fx.burst ? 1.35 : 1;
+              const dx = (weaponContact.x - casterX) * overshoot;
+              const dy = (weaponContact.y - casterY) * overshoot;
+              const angle = Math.atan2(weaponContact.y - casterY, weaponContact.x - casterX) * 180 / Math.PI;
+              return { casterX, casterY, dx, dy, angle };
+            })() : null;
+            // Solenne's normal attack already lands as a vertical strike, so
+            // a beam falling onto the same contact point and a floor sigil
+            // beneath it read as one continuous invocation rather than a
+            // separate effect bolted on top.
+            const solenneStrike = sourceUnit.id === "solenne" && !fx.burst;
+            const groundY = 355 - targetPosition.bottom;
+            return <Fragment key={fx.id}>
+              {zephyraShot && (
+                <span
+                  className={`zephyra-arrow-shot ${fx.burst ? "zephyra-arrow-shot-burst" : ""}`}
+                  style={{
+                    left: `${zephyraShot.casterX}px`,
+                    top: `${zephyraShot.casterY}px`,
+                    "--arrow-dx": `${zephyraShot.dx}px`,
+                    "--arrow-dy": `${zephyraShot.dy}px`,
+                    "--arrow-angle": `${zephyraShot.angle}deg`,
+                  } as CSSProperties}
+                  aria-hidden="true"
+                >
+                  <img src="/effects/projectiles/zephyra-arrow.webp" alt="" draggable={false} />
+                </span>
+              )}
+              {solenneStrike && (
+                <>
+                  <span
+                    className="solenne-beam"
+                    style={{
+                      left: `${weaponContact.x}px`,
+                      "--beam-height": `${Math.max(40, groundY + 30)}px`,
+                    } as CSSProperties}
+                    aria-hidden="true"
+                  />
+                  <span
+                    className="solenne-sigil"
+                    style={{
+                      left: `${weaponContact.x}px`,
+                      top: `${groundY - 6}px`,
+                    } as CSSProperties}
+                    aria-hidden="true"
+                  >
+                    <svg viewBox="0 0 100 40">
+                      <ellipse cx="50" cy="20" rx="44" ry="15" fill="none" stroke="#fffdf0" strokeWidth="2.4" opacity={0.9} />
+                      <ellipse cx="50" cy="20" rx="30" ry="10" fill="none" stroke="#fff3c2" strokeWidth="1.6" opacity={0.75} />
+                      {Array.from({ length: 8 }, (_, index) => {
+                        const theta = (index / 8) * Math.PI * 2;
+                        const x1 = 50 + Math.cos(theta) * 44;
+                        const y1 = 20 + Math.sin(theta) * 15;
+                        const x2 = 50 + Math.cos(theta) * 54;
+                        const y2 = 20 + Math.sin(theta) * 19;
+                        return <line key={index} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#fffdf0" strokeWidth="1.8" opacity={0.8} />;
+                      })}
+                    </svg>
+                  </span>
+                </>
+              )}
+              <div
+                className={`impact-stack concurrent-impact impact-count-${battle.enemies.length} impact-target-${targetIndex + 1} impact-${sourceUnit.element} impact-unit-${sourceUnit.id} burst-impact-frame-${fx.frame} ${fx.burst ? "burst-impact" : ""} ${fx.finisher ? "finisher-impact" : ""} ${fx.spark ? "spark-hit" : ""} ${fx.critical ? "critical-hit" : ""}`}
+                style={{
+                  left: `${weaponContact.x - 50}px`,
+                  top: `${weaponContact.y - 50}px`,
+                  bottom: "auto",
+                  "--numeral-drift-x": `${numeralDriftX}px`,
+                  "--numeral-drift-y": `${numeralDriftY}px`,
+                } as CSSProperties}
+              >
+                {gameSettings.damageNumbers && <>
+                  <strong>{fx.damage.toLocaleString()}</strong>
+                  {impactLabel && <small>{impactLabel}</small>}
+                  {fx.weakness && <em>WEAKNESS</em>}
+                </>}
+              </div>
+            </Fragment>;
           })}
+          {(() => {
+            // Zephyra's all-foe Burst fires as one oversized shot rather than
+            // one arrow per struck foe: it launches from her own position,
+            // aims through whichever living enemy sits closest to the centre
+            // of the formation, and keeps travelling well past the left edge
+            // of the battlefield instead of stopping on a contact point.
+            const pierceFx = damageFxs.find((fx) => fx.unitId === "zephyra" && fx.burst
+              && getUnitStarProfile("zephyra", save.unitStars.zephyra ?? 3).burstScope === "all");
+            if (!pierceFx) return null;
+            const casterIndex = Math.max(0, battle.party.findIndex((member) => member.id === "zephyra"));
+            const casterSlot = HERO_FORMATION[casterIndex] ?? HERO_FORMATION[0];
+            const casterX = battlefieldWidth - casterSlot.right - casterSlot.width / 2;
+            const casterY = 355 - casterSlot.bottom - 70;
+            const formation = ENEMY_FORMATIONS[battle.enemies.length] ?? ENEMY_FORMATIONS[2];
+            let middleSlot = formation[0];
+            let bestDelta = Infinity;
+            battle.enemies.forEach((enemy, index) => {
+              if (enemy.hp <= 0) return;
+              const slot = formation[index] ?? formation[0];
+              const delta = Math.abs(slot.left - 50);
+              if (delta < bestDelta) { bestDelta = delta; middleSlot = slot; }
+            });
+            const midContact = getWeaponContactPoint({
+              unitId: "zephyra",
+              hitIndex: 1,
+              burst: true,
+              targetLeft: middleSlot.left,
+              targetBottom: middleSlot.bottom,
+            });
+            const rawDx = midContact.x - casterX;
+            const rawDy = midContact.y - casterY;
+            const rawDist = Math.hypot(rawDx, rawDy) || 1;
+            const pierceDistance = 560;
+            const dx = (rawDx / rawDist) * pierceDistance;
+            const dy = (rawDy / rawDist) * pierceDistance;
+            const angle = Math.atan2(rawDy, rawDx) * 180 / Math.PI;
+            return (
+              <span
+                key={`${pierceFx.id}-pierce`}
+                className="zephyra-arrow-shot zephyra-arrow-shot-pierce"
+                style={{
+                  left: `${casterX}px`,
+                  top: `${casterY}px`,
+                  "--arrow-dx": `${dx}px`,
+                  "--arrow-dy": `${dy}px`,
+                  "--arrow-angle": `${angle}deg`,
+                } as CSSProperties}
+                aria-hidden="true"
+              >
+                <img src="/effects/projectiles/zephyra-arrow.webp" alt="" draggable={false} />
+              </span>
+            );
+          })()}
           {damageFxs.some((fx) => fx.spark) && <div className="spark-counter" key={`spark-${battle.combo}-${screenImpact}`}><Sparkles /> SPARK!!</div>}
           {crystalFxs.map((fx) => {
             const targetIndex = Math.max(0, battle.enemies.findIndex((enemy) => enemy.instanceId === fx.targetEnemyId));

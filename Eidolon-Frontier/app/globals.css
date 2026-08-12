@@ -300,6 +300,21 @@ button:not(:disabled):active{transform:scale(.975);filter:brightness(1.08)}
 .fx-burst .field-unit.active{z-index:25;animation:none!important;transform:translate(var(--contact-x),var(--contact-y)) scale(1.24)!important;transition:transform .16s cubic-bezier(.1,.85,.16,1);filter:brightness(1.38) drop-shadow(0 11px 7px #000d) drop-shadow(0 0 22px currentColor)}
 .fx-attacking .field-unit.active .battle-unit-sprite{animation:contactStance .24s ease-in-out infinite alternate}
 .fx-burst .field-unit.active .battle-unit-sprite{animation:burstStance .32s ease-in-out infinite alternate}
+/* Solenne's Burst is a stationary invocation: she stays planted at her idle
+   spot rather than lunging toward the enemy like the melee/ranged casts do.
+   Each selector below repeats the higher-specificity attack-stage qualifier
+   so this wins over every other bursting/stage transform rule regardless of
+   where those are declared in the sheet. */
+.field-unit.unit-solenne.active.bursting,
+.field-unit.unit-solenne.active.bursting.attack-stage-approach,
+.field-unit.unit-solenne.active.bursting.attack-stage-windup,
+.field-unit.unit-solenne.active.bursting.attack-stage-release,
+.field-unit.unit-solenne.active.bursting.attack-stage-flight,
+.field-unit.unit-solenne.active.bursting.attack-stage-impact,
+.field-unit.unit-solenne.active.bursting.attack-stage-hitstop,
+.field-unit.unit-solenne.active.bursting.attack-stage-recover,
+.field-unit.unit-solenne.active.bursting.attack-stage-anchored,
+.field-unit.unit-solenne.active.bursting.attack-stage-return{transform:none!important;filter:drop-shadow(0 8px 5px #000b) drop-shadow(0 0 14px currentColor)!important}
 .fx-attacking .field-unit.active::after{content:none}
 .enemy-party .enemy-figure.enemy-hit{animation:enemyContactHit .18s ease-out both!important;z-index:17;filter:saturate(1.08) contrast(1.06)}
 .enemy-party .enemy-figure.enemy-hit::after{content:none}
@@ -1025,7 +1040,14 @@ emblem{
 }
 .field-unit.active:not(.attack-stage-approach) .field-unit-shadow{
   opacity:.9!important;
-  transform:scaleX(1.24)!important;
+  /* The character reaches --contact-y in full to visually connect with a
+     target standing at a different formation height/depth, but a shadow
+     that rode along for the whole distance reads as "floating in the sky"
+     rather than a grounded strike or an intentional jump. Countering most
+     of that vertical travel keeps the shadow near the unit's own ground
+     spot; only ~18% of the reach still nudges it, so it still settles
+     under wherever the unit actually lands once the attack ends. */
+  transform:translateY(calc(var(--contact-y) * -0.82)) scaleX(1.24)!important;
 }
 .field-unit.active:not(.attack-stage-approach) .field-unit-aura{
   opacity:.34!important;
@@ -1038,6 +1060,28 @@ emblem{
   transform:none!important;
   opacity:1!important;
   visibility:visible!important;
+}
+
+/* The progressive Burst timeline is allowed to draw airborne poses inside its
+   locked 512px canvas.  The unit wrapper stays contact-anchored, so the target,
+   impact and shadow never drift with the artwork.  The last authored frame is
+   the exact idle pose and receives a short planted hold before travel home. */
+.field-unit.active.bursting.attack-stage-release .sprite-burst-frame.active,
+.field-unit.active.bursting.attack-stage-flight .sprite-burst-frame.active{
+  transform:none!important;
+  transform-origin:center bottom!important;
+}
+.field-unit.active.bursting.attack-stage-anchored{
+  transform:translate(var(--contact-x),var(--contact-y)) scale(1.025)!important;
+  transition:none!important;
+  animation:none!important;
+  filter:drop-shadow(0 10px 6px #000c)!important;
+}
+.field-unit.active.bursting.attack-stage-anchored .battle-unit-sprite,
+.field-unit.active.bursting.attack-stage-anchored .sprite-burst-frame.active{
+  transform:none!important;
+  transition:none!important;
+  animation:none!important;
 }
 
 /* Cinematic raster Burst plates. Each hero owns four escalating{position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
@@ -1140,17 +1184,55 @@ emblem{
 .remotion-stage{position:absolute;z-index:-4;inset:0;overflow:hidden;pointer-events:none;background:#061017}
 .remotion-stage>div,.remotion-stage>div>div{width:100%!important;height:100%!important}
 .stage-poster{z-index:-5!important;opacity:.58;filter:saturate(.9) contrast(1.04) brightness(.66)!important}
-.remotion-burst{position:absolute;z-index:8;inset:0;overflow:hidden;pointer-events:none;mix-blend-mode:screen;isolation:auto}
-.remotion-burst>div,.remotion-burst>div>div{width:100%!important;height:100%!important}
 .kael-remotion-intro{position:absolute;z-index:46;inset:0;overflow:hidden;pointer-events:none;isolation:isolate}
 .kael-remotion-intro>div,.kael-remotion-intro>div>div{width:100%!important;height:100%!important}
-.rpg-burst-preloader{position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
-.rpg-burst-preloader img{position:absolute;width:1px;height:1px}
+
+/* v58 HyperFrames-authored five-star Burst motion language. The runtime layer
+   is SVG/CSS, tied to the same frame, stage and contact coordinates as combat;
+   it never obscures the battlefield with a second video or full-screen plate. */
+.five-star-burst-vfx{position:absolute;z-index:34;inset:0;overflow:visible;pointer-events:none;mix-blend-mode:normal;isolation:isolate;transition:opacity calc(.09s * var(--battle-time-scale)) linear}
+.five-star-burst-vfx>svg{display:block;width:430px;height:355px;overflow:visible;filter:drop-shadow(0 2px 1px #001018e8) drop-shadow(0 0 5px var(--burst-vfx-primary)) saturate(1.28) contrast(1.12)}
+.five-star-vfx-flame-cluster,.five-star-vfx-ribbon,.five-star-vfx-water-swirl,.five-star-vfx-earth-wake,.five-star-vfx-rock-burst,.five-star-vfx-lightning-charge,.five-star-vfx-projectile,.five-star-vfx-heal,.five-star-vfx-sanctuary,.five-star-vfx-void-charge,.five-star-vfx-void-sweep,.five-star-vfx-rift{transform-box:view-box;filter:drop-shadow(0 1px 1px #001018e6) drop-shadow(0 0 6px var(--burst-vfx-primary)) drop-shadow(0 0 11px var(--burst-vfx-secondary))}
+.five-star-vfx-flame-cluster,.five-star-vfx-lightning-charge{transform-origin:0 0}
+.five-star-vfx-ribbon,.five-star-vfx-void-sweep{filter:drop-shadow(0 0 4px var(--burst-vfx-primary))}
+.five-star-vfx-water-swirl,.five-star-vfx-sanctuary{filter:drop-shadow(0 0 5px var(--burst-vfx-primary))}
+.five-star-vfx-rock-burst{filter:drop-shadow(0 3px 2px #21150dbb)}
+.five-star-vfx-mote{filter:drop-shadow(0 0 3px var(--burst-vfx-core))}
+.five-star-vfx-projectile{filter:drop-shadow(0 0 6px var(--burst-vfx-primary)) drop-shadow(0 0 11px var(--burst-vfx-secondary))}
+.five-star-vfx-heal{filter:drop-shadow(0 0 5px var(--burst-vfx-primary))}
+.five-star-vfx-rift{filter:drop-shadow(0 0 7px var(--burst-vfx-secondary))}
+.five-star-burst-impact{position:absolute;z-index:38;width:150px;height:150px;margin:-10px;pointer-events:none;mix-blend-mode:normal;transform:rotate(var(--burst-impact-angle));transform-origin:50% 50%;animation:fiveStarImpactEnvelope calc(.56s * var(--battle-time-scale)) cubic-bezier(.16,.82,.26,1) both}
+.five-star-burst-impact>svg{display:block;width:100%;height:100%;overflow:visible;filter:drop-shadow(0 0 5px var(--burst-vfx-primary))}
+.five-star-impact-shape{fill:var(--burst-vfx-primary);stroke:var(--burst-vfx-core);stroke-width:1.5;transform-origin:center;animation:fiveStarFilledSlash calc(.39s * var(--battle-time-scale)) cubic-bezier(.12,.83,.21,1) both}
+.five-star-impact-hot{fill:var(--burst-vfx-core);transform-origin:center;animation:fiveStarFilledSlash calc(.32s * var(--battle-time-scale)) cubic-bezier(.12,.83,.21,1) both}
+.five-star-impact-void{fill:#120218;stroke:var(--burst-vfx-primary);stroke-width:3;transform-origin:center;animation:fiveStarRiftCollapse calc(.42s * var(--battle-time-scale)) cubic-bezier(.16,.78,.3,1) both}
+.five-star-impact-particle{fill:var(--burst-vfx-primary);stroke:var(--burst-vfx-core);stroke-width:1.2;transform-origin:center;animation:fiveStarParticleBurst calc(.34s * var(--battle-time-scale)) ease-out both}
+.five-star-impact-finisher{z-index:24;scale:1.2;filter:drop-shadow(0 0 8px var(--burst-vfx-secondary))}
+.five-star-impact-brannock .five-star-impact-shape{fill:var(--burst-vfx-secondary);stroke:#efd288}
+.five-star-impact-nyx .five-star-impact-shape{fill:var(--burst-vfx-secondary)}
+.five-star-impact-zephyra{filter:drop-shadow(0 0 6px #fff177)}
+@keyframes fiveStarImpactEnvelope{0%{opacity:0;scale:.36}18%{opacity:1;scale:1.04}64%{opacity:.9;scale:1}100%{opacity:0;scale:1.24}}
+@keyframes fiveStarFilledSlash{0%{opacity:0;scale:.18;rotate:-14deg}30%{opacity:1;scale:1.08;rotate:2deg}100%{opacity:0;scale:.72;rotate:8deg}}
+@keyframes fiveStarRiftCollapse{0%{opacity:0;scale:.35 1.1}35%{opacity:1;scale:1 1}100%{opacity:0;scale:.06 1.12}}
+@keyframes fiveStarParticleBurst{0%{opacity:0;scale:.2}28%{opacity:1;scale:1.15}100%{opacity:0;scale:.7;translate:0 -12px}}
+.reduced-effects .five-star-burst-vfx{filter:none}
+.reduced-effects .five-star-burst-impact{animation-duration:calc(.24s * var(--battle-time-scale));filter:none}
 
 /* The idle reads as a planted breath rather than a deep squat. With the
    bottom origin fixed, the head only dips a couple of pixels at field scale. */
 .field-unit:not(.active):not(.fallen) .battle-unit-sprite.sprite-idle{animation:idleBreathRig 1.54s cubic-bezier(.42,0,.28,1) infinite!important;animation-delay:var(--idle-delay)!important}
 .field-unit:not(.active):not(.fallen) .field-unit-shadow{animation:idleBreathShadow 1.54s cubic-bezier(.42,0,.28,1) infinite!important;animation-delay:var(--idle-delay)!important}
+/* 5-star sprites are fully locked at idle (see the locked-5star rule below —
+   the character wrapper gets animation:none/transform:none so the six baked
+   phases don't fight a second CSS motion). The shadow was left animating
+   independently the whole time, restarting its own breathing cycle from a
+   fresh phase every time an attack interrupts and returns it — visibly
+   desyncing from the now-static character. Lock it the same way. */
+.field-unit.form-5:not(.active):not(.fallen) .field-unit-shadow{
+  animation:none!important;
+  transform:scaleX(1.1)!important;
+  opacity:.86!important;
+}
 .field-unit:not(.active):not(.fallen) .field-unit-aura{animation:idleBreathAura 1.54s ease-in-out infinite!important;animation-delay:var(--idle-delay)!important}
 .battle-unit-sprite.sprite-idle .sprite-idle-a{transform:translateY(0) scaleX(1) scaleY(1)!important}
 .battle-unit-sprite.sprite-idle .sprite-idle-b{transform:translateY(.35px) scaleX(1.006) scaleY(.992)!important}
@@ -1235,10 +1317,10 @@ emblem{
 .field-unit.unit-lyra.form-3 .battle-unit-sprite{scale:-.9049 .9772;bottom:-7.2px}
 .field-unit.unit-lyra.form-4 .battle-unit-sprite{scale:-1 1.08;bottom:-7.2px}
 .field-unit.unit-lyra.form-5 .battle-unit-sprite{scale:1 1.08;bottom:-10.7px}
-.field-unit.unit-brannock.form-2 .battle-unit-sprite{scale:-1.6042 1.6042;bottom:-40px}
-.field-unit.unit-brannock.form-3 .battle-unit-sprite{scale:-1.335 1.335;bottom:-7.8px}
-.field-unit.unit-brannock.form-4 .battle-unit-sprite{scale:-1.3732 1.3732;bottom:-8.5px}
-.field-unit.unit-brannock.form-5 .battle-unit-sprite{scale:-1.35 1.35;bottom:-10px}
+.field-unit.unit-brannock.form-2 .battle-unit-sprite{scale:-.7511 .8112;bottom:-40px}
+.field-unit.unit-brannock.form-3 .battle-unit-sprite{scale:-.9049 .9772;bottom:-7.8px}
+.field-unit.unit-brannock.form-4 .battle-unit-sprite{scale:-1 1.08;bottom:-8.5px}
+.field-unit.unit-brannock.form-5 .battle-unit-sprite{scale:-1 1.08;bottom:-10px}
 .field-unit.unit-zephyra.form-2 .battle-unit-sprite{scale:-1.2662 1.2662;bottom:-19.4px}
 .field-unit.unit-zephyra.form-3 .battle-unit-sprite{scale:-1.2832 1.2832;bottom:-17.5px}
 .field-unit.unit-zephyra.form-4 .battle-unit-sprite{scale:-1.3229 1.3229;bottom:-11.9px}
@@ -1816,7 +1898,7 @@ emblem{
 .remotion-attack>div,.remotion-attack>div>div{width:100%!important;height:100%!important;background:transparent!important}
 /* .attack-frame-transition removed - see app/page.tsx */
 .battlefield.no-screen-shake{animation:none!important}
-.reduced-effects .remotion-attack,.reduced-effects .remotion-burst{opacity:.5}
+.reduced-effects .remotion-attack{opacity:.5}
 .reduced-effects .destination-atmosphere{display:none}
 
 /* Zephyra's visible artwork already shares one foot line across both 512px
@@ -1941,29 +2023,6 @@ emblem{
    the number is intentionally absent. */
 .impact-stack::before{content:none!important;display:none!important}
 
-/* The supplied ember-line source spans Kael's complete Burst inside the
-   battlefield only. Screen blending removes its black field while the squad,
-   enemies and combat feedback remain readable underneath. */
-.kael-burst-fullscreen-source{
-  position:absolute;
-  z-index:34;
-  inset:0;
-  width:100%;
-  height:100%;
-  object-fit:cover;
-  object-position:center;
-  opacity:.8;
-  mix-blend-mode:screen;
-  filter:saturate(1.18) contrast(1.08);
-  pointer-events:none;
-  animation:kaelFullscreenSourceSequence calc(3.4s * var(--battle-time-scale)) ease-in-out both;
-}
-.reduced-effects .kael-burst-fullscreen-source{opacity:.3;filter:saturate(.9);animation:none}
-@keyframes kaelFullscreenSourceSequence{
-  0%{opacity:.8}
-  55%{opacity:.5}
-  100%{opacity:.65}
-}
 
 /* Fast synchronized feedback: these visible hit layers use the same clock as
    the attacker pose, Remotion contact and grounded enemy recoil. */
@@ -2011,6 +2070,14 @@ emblem{
   transform:none!important;
   animation:none!important;
   transition:none!important;
+}
+/* Her Burst is a single piercing shot fired from a planted stance, not a
+   forward lunge — override the generic burstAttack leap every other unit
+   gets so she stays exactly where her idle pose already has her. */
+.field-unit.unit-zephyra.bursting,
+.field-unit.unit-zephyra.active.bursting{
+  animation:none!important;
+  transform:none!important;
 }
 .zephyra-arrow-flight{
   position:absolute;
@@ -2606,7 +2673,6 @@ emblem{
 
 /* Keep ordinary contact VFX compact and lower on the enemy body. */
 .remotion-attack{transform:translateY(10px) scale(.88);transform-origin:50% 58%}
-.remotion-burst{transform:translateY(8px) scale(.94);transform-origin:50% 58%}
 .solenne-judgement-beam{bottom:-2px;scale:.9;transform-origin:50% 100%}
 
 @media (max-width:370px){.home-main-story-gate{width:min(46vw,198px);margin-top:5px}}
@@ -3322,6 +3388,11 @@ html.game-background-paused *::after{
 .battle-face-portrait.unit-brannock.form-3 img{transform-origin:60% 39%}
 .battle-face-portrait.unit-brannock.form-4 img{transform-origin:57% 34%}
 .battle-face-portrait.unit-brannock.form-5 img{transform-origin:64% 36%}
+.battle-face-portrait.unit-brannock img{transform:scale(1.32)!important;transform-origin:50% 39%!important}
+.battle-face-portrait.unit-brannock.form-2 img,
+.battle-face-portrait.unit-brannock.form-3 img,
+.battle-face-portrait.unit-brannock.form-4 img,
+.battle-face-portrait.unit-brannock.form-5 img{transform-origin:50% 39%!important}
 .battle-face-portrait.unit-zephyra.form-2 img{transform-origin:50% 38%}
 .battle-face-portrait.unit-zephyra.form-3 img{transform-origin:48% 39%}
 .battle-face-portrait.unit-zephyra.form-4 img{transform-origin:50% 44%}
@@ -3352,4 +3423,72 @@ html.game-background-paused *::after{
 
 @media (prefers-reduced-motion:reduce){
   .story-unit.story-speaker-sprite img{animation:none!important}
+}
+
+/* Zephyra's arrow: her own authored Burst-frame artwork (the charged,
+   lightning-wrapped shot from frame 14, cropped to just the flying arrow and
+   feathered on its trailing edge) flown as a real projectile from her own
+   field position to the exact contact point on whatever she is currently
+   hitting, rotated to face that flight direction. Her Burst volley
+   (zephyra-arrow-shot-burst) overshoots past the contact point instead of
+   stopping on the connecting pose, so the shot reads as piercing through
+   rather than ending on a frame. */
+.zephyra-arrow-shot{
+  position:absolute;z-index:16;width:50px;height:22px;margin-top:-11px;
+  pointer-events:none;
+  animation:zephyraArrowFlight calc(.26s * var(--battle-time-scale,1)) cubic-bezier(.22,.68,.15,1) forwards;
+}
+.zephyra-arrow-shot-burst{animation-duration:calc(.32s * var(--battle-time-scale,1))}
+/* The single all-foe piercing shot travels much further (clear off the left
+   edge of the battlefield) than a normal contact-point arrow, so it gets its
+   own larger size and a longer flight to match without feeling rushed. */
+.zephyra-arrow-shot-pierce{
+  width:88px;height:38px;margin-top:-19px;
+  animation-duration:calc(.62s * var(--battle-time-scale,1));
+  animation-timing-function:cubic-bezier(.3,.55,.2,1);
+}
+.zephyra-arrow-shot img{width:100%;height:100%;display:block;object-fit:contain;filter:drop-shadow(0 0 5px #fff3a8cc) drop-shadow(0 2px 2px #0009)}
+@keyframes zephyraArrowFlight{
+  0%{transform:translate(0,0) rotate(var(--arrow-angle));opacity:0}
+  10%{opacity:1}
+  /* Full opacity is held almost to the very end of the flight so the arrow
+     visibly reaches and connects with its target instead of fading out
+     mid-air — it should only vanish once contact actually lands. */
+  94%{opacity:1}
+  100%{transform:translate(var(--arrow-dx),var(--arrow-dy)) rotate(var(--arrow-angle));opacity:0}
+}
+
+/* Solenne's normal attack: a white beam falls onto the same contact point
+   her strike already lands on, blooming into a floor sigil beneath the foe.
+   The sigil is perspective-tilted like .field-unit-aura so it reads as lying
+   flat on the ground rather than facing the camera. */
+.solenne-beam{
+  position:absolute;z-index:15;top:-30px;width:20px;margin-left:-10px;height:0;
+  pointer-events:none;border-radius:50% 50% 40% 40% / 60% 60% 40% 40%;
+  background:linear-gradient(180deg,transparent,#fffdf0 12%,#fff6d2 70%,#ffe89a);
+  filter:drop-shadow(0 0 10px #fff6cfcc) drop-shadow(0 0 22px #ffe89a99);
+  animation:solenneBeamFall calc(.34s * var(--battle-time-scale,1)) cubic-bezier(.22,.6,.12,1) forwards;
+}
+@keyframes solenneBeamFall{
+  0%{height:0;opacity:0}
+  12%{opacity:1}
+  55%{height:var(--beam-height);opacity:1}
+  82%{height:var(--beam-height);opacity:.85}
+  100%{height:var(--beam-height);opacity:0}
+}
+.solenne-sigil{
+  position:absolute;z-index:14;width:74px;height:30px;margin-left:-37px;margin-top:-15px;
+  pointer-events:none;opacity:0;transform-origin:center;
+  animation:solenneSigilBloom calc(.55s * var(--battle-time-scale,1)) ease-out calc(.1s * var(--battle-time-scale,1)) forwards;
+}
+.solenne-sigil svg{width:100%;height:100%;display:block;filter:drop-shadow(0 0 8px #fff3c2cc)}
+@keyframes solenneSigilBloom{
+  0%{opacity:0;transform:scale(.4) rotate(-20deg)}
+  30%{opacity:1}
+  70%{opacity:.85;transform:scale(1) rotate(5deg)}
+  100%{opacity:0;transform:scale(1.18) rotate(12deg)}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .zephyra-arrow-shot,.solenne-beam,.solenne-sigil{animation:none!important;opacity:0!important}
 }

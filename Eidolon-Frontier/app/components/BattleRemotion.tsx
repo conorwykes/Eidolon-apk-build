@@ -5,13 +5,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Player } from "@remotion/player";
 import {
-  ATTACK_IMPACT_DURATION,
-  AttackImpactComposition,
-  BurstVfxComposition,
   KaelFireBurstIntro,
-  RPG_BURST_ASSET_SOURCES,
   StageMotionComposition,
-  getBurstDurationInFrames,
   type BattleStageId,
   type BurstUnitId,
 } from "../../remotion/BattleVfx";
@@ -66,99 +61,7 @@ export function AnimatedBattleStage({ stageId, stageSrc }: { stageId: BattleStag
           style={{ width: "100%", height: "100%" }}
         />
       </div>
-      <span className="rpg-burst-preloader" aria-hidden="true">
-        {RPG_BURST_ASSET_SOURCES.map((src) => <img key={src} src={src} alt="" />)}
-      </span>
     </>
-  );
-}
-
-export function BurstRemotionOverlay({
-  instanceId,
-  unitId,
-  stars,
-  hitCount,
-  speed,
-  targetLeft,
-  targetBottom,
-  reducedEffects = false,
-}: {
-  instanceId: string;
-  unitId: string;
-  stars: 2 | 3 | 4 | 5;
-  hitCount: number;
-  speed: 1 | 2;
-  targetLeft: number;
-  targetBottom: number;
-  reducedEffects?: boolean;
-}) {
-  return (
-    <div className="remotion-burst" data-burst-instance={instanceId} aria-hidden="true">
-      <Player
-        key={instanceId}
-        component={BurstVfxComposition}
-        durationInFrames={getBurstDurationInFrames(hitCount)}
-        compositionWidth={430}
-        compositionHeight={355}
-        fps={30}
-        inputProps={{ unitId: unitId as BurstUnitId, stars, hitCount, targetLeft, targetBottom, reducedEffects }}
-        autoPlay
-        playbackRate={getBattlePlaybackRate(speed)}
-        acknowledgeRemotionLicense
-        style={{ width: "100%", height: "100%", backgroundColor: "transparent" }}
-      />
-    </div>
-  );
-}
-
-export function AttackImpactOverlay({
-  instanceId,
-  unitId,
-  stars,
-  speed,
-  targetLeft,
-  targetBottom,
-  hitIndex,
-  critical,
-  spark,
-  reducedEffects = false,
-}: {
-  instanceId: string;
-  unitId: string;
-  stars: 2 | 3 | 4 | 5;
-  speed: 1 | 2;
-  targetLeft: number;
-  targetBottom: number;
-  hitIndex: number;
-  critical: boolean;
-  spark: boolean;
-  reducedEffects?: boolean;
-}) {
-  return (
-    <div className="remotion-attack" data-attack-instance={instanceId} aria-hidden="true">
-      <Player
-        key={instanceId}
-        component={AttackImpactComposition}
-        durationInFrames={ATTACK_IMPACT_DURATION}
-        compositionWidth={430}
-        compositionHeight={355}
-        fps={30}
-        inputProps={{
-          unitId: unitId as BurstUnitId,
-          stars,
-          targetLeft,
-          targetBottom,
-          hitIndex,
-          critical,
-          spark,
-          reducedEffects,
-        }}
-        autoPlay
-        playbackRate={getBattlePlaybackRate(speed)}
-        acknowledgeRemotionLicense
-        style={{ width: "100%", height: "100%", backgroundColor: "transparent" }}
-      />
-    </div>
   );
 }
 
@@ -195,6 +98,3 @@ export function BurstIntroOverlay({
     </div>
   );
 }
-
-/** Retained alias: this overlay is no longer Kael-specific. */
-export const KaelBurstIntroOverlay = BurstIntroOverlay;

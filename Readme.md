@@ -5,10 +5,10 @@ the GitHub Actions workflow that packages it as a signed Android APK.
 
 ## Current version
 
-- Game source: `Eidolon-Frontier/` (v57, "Gates of Azura")
+- Game source: `Eidolon-Frontier/` (v59, "Gates of Azura")
 - Android application ID: `com.eidolon.frontier`
-- Android `versionCode`: `57`
-- Android `versionName`: `57.0`
+- Android `versionCode`: `59`
+- Android `versionName`: `59.0`
 - APK workflow: `.github/workflows/Build-apk.yml`
 
 The source in `Eidolon-Frontier/` is authoritative. Future game changes should
@@ -31,19 +31,29 @@ and embeds the result in a small native Android wrapper.
 
 ## Android releases
 
-Run the **Build Eidolon Frontier v57 APK** workflow from GitHub Actions. It:
+Run the **Build Eidolon Frontier v59 APK** workflow from GitHub Actions. It:
 
 1. packages a clean editable-source ZIP for backup;
 2. builds the offline mobile Vite bundle;
 3. wraps it as `com.eidolon.frontier`;
 4. signs it with the repository's existing Android signing secrets;
 5. verifies the APK signature; and
-6. uploads the APK, checksum, and source backup to the `v57` GitHub Release.
+6. uploads the APK, checksum, and source backup to the `v59` GitHub Release.
 
 The signing secret values must never be printed, replaced, removed, or
 committed. Keeping the existing secrets and application ID is required for the
 APK to install as an update over earlier releases.
 
+
+## v59 changes
+
+- Rebuilt Burst timelines for all six units at every rarity (2★: 6 frames, 3★: 8, 4★: 12, 5★: 14-22 depending on unit), with progressive anticipation/action/impact/recovery poses and frame-synchronised elemental VFX.
+- Completely redrew Brannock at every rarity with a compact shield/gauntlet kit in place of his old hammer; reauthored Solenne's normal-attack poses as a planted invocation.
+- Fixed normal attacks cycling through only 2 of their 4 authored frames (every hit but the last was hard-coded to the same frame) — now rotates through all 4.
+- Aligned every unit's `burstHits` gameplay value to its actual Burst frame count, so the animation no longer skips authored frames via a stale hit-to-frame ratio.
+- Reworked Zephyra's arrows: normal-attack shots now travel to and visibly connect with the target instead of fading out mid-flight, and her Burst fires as one large piercing arrow through the whole formation instead of one arrow per target.
+- Restored the pre-v58 battle pacing (a prior pass had shortened both speed settings by 25%, making normal speed read as what 2x should feel like).
+- Locked the idle shadow for 5-star units to match the sprite's own motion-locked idle state, fixing a desync introduced when only the sprite (not the shadow) was locked.
 
 ## v57 changes
 

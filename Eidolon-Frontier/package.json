@@ -1,6 +1,6 @@
 {
   "name": "gates-of-azura",
-  "version": "57.0.0",
+  "version": "59.0.0",
   "private": true,
   "engines": {
     "node": ">=22.13.0"

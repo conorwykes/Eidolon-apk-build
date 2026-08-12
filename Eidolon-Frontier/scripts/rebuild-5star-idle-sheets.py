@@ -224,6 +224,45 @@ def build_unit(unit_id: str) -> dict[str, object]:
     }
 
 
+def preserve_authored_combined_unit(unit_id: str) -> dict[str, object]:
+    """Preserve a fully redrawn combined idle sheet without legacy overlays."""
+    unit_root = SPRITE_ROOT / f"{unit_id}-evolution"
+    frame_root = unit_root / "frames" / "5"
+    frames = [Image.open(frame_root / f"idle-{index}.webp").convert("RGBA") for index in range(1, 7)]
+    bounds = [frame.getchannel("A").getbbox() for frame in frames]
+    if not all(bounds):
+        raise ValueError(f"{unit_id}: authored idle frame is empty")
+    foot_lines = [bound[3] for bound in bounds if bound]
+    if len(set(foot_lines)) != 1:
+        raise ValueError(f"{unit_id}: authored foot anchor moved: {foot_lines}")
+
+    idle_sheet = Image.new("RGBA", (FRAME_SIZE * 3, FRAME_SIZE * 2), (0, 0, 0, 0))
+    for index, frame in enumerate(frames):
+        idle_sheet.alpha_composite(frame, ((index % 3) * FRAME_SIZE, (index // 3) * FRAME_SIZE))
+    idle_sheet_path = unit_root / "sheets" / f"{unit_id}-5-idle-sheet.png"
+    idle_sheet.save(idle_sheet_path, "PNG", optimize=True)
+
+    master = Image.new("RGBA", (FRAME_SIZE * IDLE_FRAME_COUNT, FRAME_SIZE * 3), (0, 0, 0, 0))
+    for column, frame in enumerate(frames):
+        master.alpha_composite(frame, (column * FRAME_SIZE, 0))
+    for row, animation in enumerate(("attack", "burst"), start=1):
+        for column in range(4):
+            frame = Image.open(frame_root / f"{animation}-{column + 1}.webp").convert("RGBA")
+            master.alpha_composite(frame, (column * FRAME_SIZE, row * FRAME_SIZE))
+    master_path = unit_root / "sheets" / f"{unit_id}-5-master-sheet.png"
+    master.save(master_path, "PNG", optimize=True)
+
+    return {
+        "unit": unit_id,
+        "sourceMode": "authored combined character-and-element frames",
+        "bodyAnchorPolicy": "fixed 512px cells and shared foot line across six progression/recovery frames",
+        "bodyFrameBounds": bounds,
+        "phaseOrder": PHASE_ORDER,
+        "combinedIdleSheet": idle_sheet_path.relative_to(PROJECT_ROOT).as_posix(),
+        "masterSheet": master_path.relative_to(PROJECT_ROOT).as_posix(),
+    }
+
+
 def main() -> None:
     SOURCE_ROOT.mkdir(parents=True, exist_ok=True)
     manifest = {
@@ -232,7 +271,7 @@ def main() -> None:
         "bodyAnchorPolicy": "fixed horizontal body centre and foot line across all six combined frames",
         "elementAnchorPolicy": "fixed per-unit VFX centre and ground line; no independent runtime layer",
         "loop": "restrained -> rising -> near-peak -> peak -> receding -> settling -> restrained",
-        "units": [build_unit(unit_id) for unit_id in UNITS],
+        "units": [preserve_authored_combined_unit(unit_id) if unit_id == "brannock" else build_unit(unit_id) for unit_id in UNITS],
     }
     manifest_path = SOURCE_ROOT / "5star-idle-manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

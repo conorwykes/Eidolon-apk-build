@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1290, height=710" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1290px; height: 710px; overflow: hidden; background: #040b10; }
+      #root { position: relative; width: 1290px; height: 710px; background: radial-gradient(circle at 50% 42%, #12222a 0, #071117 42%, #03090e 100%); }
+      .clip { position: absolute; width: 430px; height: 355px; overflow: hidden; border: 1px solid rgba(159, 208, 222, .09); }
+      .clip svg { display: block; width: 100%; height: 100%; overflow: visible; }
+      .line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+      .soft { filter: drop-shadow(0 0 8px currentColor); }
+      #kael-aura, #kael-contact, #lyra-rings, #lyra-drops, #brannock-root, #brannock-crack,
+      #brannock-debris, #zephyra-charge, #zephyra-arrow, #zephyra-hit, #solenne-rays,
+      #solenne-rings, #solenne-motes, #nyx-charge, #nyx-rift { opacity: 0; }
+      #kael { left: 0; top: 0; color: #ff6a24; }
+      #lyra { left: 430px; top: 0; color: #3fd3ff; }
+      #brannock { left: 860px; top: 0; color: #9bd35f; }
+      #zephyra { left: 0; top: 355px; color: #ffe85d; }
+      #solenne { left: 430px; top: 355px; color: #ffe89a; }
+      #nyx { left: 860px; top: 355px; color: #b65cff; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="6" data-width="1290" data-height="710">
+      <div id="kael" class="clip" data-start="0" data-duration="6" data-track-index="1">
+        <svg viewBox="0 0 430 355">
+          <g id="kael-aura" class="soft" fill="#ff6a24">
+            <circle cx="307" cy="241" r="5"/><circle cx="291" cy="224" r="4"/><circle cx="321" cy="207" r="4"/><circle cx="331" cy="239" r="3"/>
+          </g>
+          <path id="kael-slash-wide" class="line soft" d="M 316 174 Q 256 96 102 214" stroke="#ff5422" stroke-width="17"/>
+          <path id="kael-slash-core" class="line" d="M 316 174 Q 256 96 102 214" stroke="#fff1a8" stroke-width="5"/>
+          <g id="kael-contact" fill="#ff9c38"><circle cx="102" cy="214" r="6"/><circle cx="86" cy="200" r="4"/><circle cx="118" cy="194" r="3"/></g>
+        </svg>
+      </div>
+
+      <div id="lyra" class="clip" data-start="0" data-duration="6" data-track-index="2">
+        <svg viewBox="0 0 430 355">
+          <g id="lyra-rings" class="soft" fill="none" stroke="#47d8ff">
+            <ellipse cx="306" cy="253" rx="48" ry="16" stroke-width="5" stroke-dasharray="58 24"/>
+            <ellipse cx="306" cy="220" rx="34" ry="43" stroke="#d9fbff" stroke-width="3" stroke-dasharray="42 30"/>
+          </g>
+          <path id="lyra-wave-a" class="line soft" d="M 322 207 Q 224 104 102 212" stroke="#d8fbff" stroke-width="6"/>
+          <path id="lyra-wave-b" class="line" d="M 296 252 Q 216 316 108 222" stroke="#26baf5" stroke-width="10"/>
+          <g id="lyra-drops" fill="#bdf7ff"><circle cx="177" cy="187" r="4"/><circle cx="150" cy="232" r="3"/><circle cx="123" cy="203" r="4"/></g>
+        </svg>
+      </div>
+
+      <div id="brannock" class="clip" data-start="0" data-duration="6" data-track-index="3">
+        <svg viewBox="0 0 430 355">
+          <ellipse id="brannock-root" cx="307" cy="272" rx="31" ry="8" fill="none" stroke="#9bd35f" stroke-width="4"/>
+          <path id="brannock-hammer" class="line soft" d="M 318 218 Q 259 103 104 231" stroke="#e3c272" stroke-width="12"/>
+          <g id="brannock-crack" class="line" stroke="#d1b266" stroke-width="4">
+            <path d="M104 231 l-32 29 M104 231 l36 27 M104 231 l-9 38 M104 231 l19 41"/>
+          </g>
+          <g id="brannock-debris" fill="#8fc75b"><circle cx="76" cy="233" r="6"/><circle cx="91" cy="218" r="4"/><circle cx="124" cy="224" r="5"/><circle cx="138" cy="240" r="4"/></g>
+        </svg>
+      </div>
+
+      <div id="zephyra" class="clip" data-start="0" data-duration="6" data-track-index="4">
+        <svg viewBox="0 0 430 355">
+          <g id="zephyra-charge" class="soft" transform="translate(282 208)">
+            <circle r="9" fill="#fffde0"/><circle r="25" fill="none" stroke="#ffe85d" stroke-width="4" stroke-dasharray="5 6"/>
+            <path class="line" d="M-32-8 l13 8-11 11 M5-31 l-5 17 16 7 M30 4 l-16 5 10 15" stroke="#9f76ff" stroke-width="3"/>
+          </g>
+          <g id="zephyra-arrow" class="soft" transform="translate(282 208)">
+            <path d="M-42 0 L27 0" stroke="#fffde7" stroke-width="8" stroke-linecap="round"/>
+            <path d="M27 0 L9-11 L14 0 L9 11 Z" fill="#fff4a1"/>
+            <path d="M-32-9 l12 7 12-10 13 9 13-7 M-32 9 l12-7 12 10 13-8 13 7" class="line" stroke="#a27bff" stroke-width="3"/>
+          </g>
+          <g id="zephyra-hit" class="line soft" stroke="#ffe85d" stroke-width="4" transform="translate(101 214)"><path d="M-35 0h70 M0-35v70 M-25-25l50 50 M25-25l-50 50"/></g>
+        </svg>
+      </div>
+
+      <div id="solenne" class="clip" data-start="0" data-duration="6" data-track-index="5">
+        <svg viewBox="0 0 430 355">
+          <g id="solenne-rays" class="line soft" stroke="#fffdf0" stroke-width="3"><path d="M303 238v-55 M384 238v-46 M303 288v-52 M384 288v-60 M303 329v-46"/></g>
+          <g id="solenne-rings" fill="none" stroke="#ffe89a" stroke-width="3">
+            <ellipse cx="303" cy="241" rx="23" ry="7"/><ellipse cx="384" cy="241" rx="21" ry="7" stroke="#f4b6e5"/>
+            <ellipse cx="303" cy="285" rx="22" ry="7" stroke="#f4b6e5"/><ellipse cx="384" cy="285" rx="24" ry="8"/>
+            <ellipse cx="303" cy="327" rx="20" ry="6"/>
+          </g>
+          <g id="solenne-motes" fill="#fffdf0"><circle cx="303" cy="208" r="4"/><circle cx="384" cy="213" r="3"/><circle cx="303" cy="261" r="3"/><circle cx="384" cy="257" r="4"/><circle cx="303" cy="305" r="3"/></g>
+        </svg>
+      </div>
+
+      <div id="nyx" class="clip" data-start="0" data-duration="6" data-track-index="6">
+        <svg viewBox="0 0 430 355">
+          <g id="nyx-charge" class="soft"><circle cx="288" cy="191" r="15" fill="#281036" stroke="#d884ff" stroke-width="4"/><circle cx="288" cy="191" r="29" fill="none" stroke="#8f3bd9" stroke-width="4" stroke-dasharray="5 8"/></g>
+          <path id="nyx-sweep" class="line soft" d="M 287 180 Q 221 80 105 214 Q 196 302 287 236" stroke="#d879ff" stroke-width="12"/>
+          <g id="nyx-rift" class="soft"><ellipse cx="103" cy="215" rx="37" ry="57" fill="#16051f" stroke="#bd5eff" stroke-width="5"/><ellipse cx="103" cy="215" rx="15" ry="42" fill="none" stroke="#f0d1ff" stroke-width="3"/></g>
+        </svg>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      const drawInOut = (selector, start, peak, end) => {
+        const length = 1;
+        tl.set(selector, { strokeDasharray: length, strokeDashoffset: length, opacity: 0 }, 0)
+          .to(selector, { strokeDashoffset: 0, opacity: 1, duration: peak - start, ease: "power2.inOut" }, start)
+          .to(selector, { strokeDashoffset: -length, opacity: 0, duration: end - peak, ease: "power2.inOut" }, peak);
+      };
+
+      tl.to("#kael-aura", { opacity: 1, scale: 1.25, transformOrigin: "307px 241px", duration: 1.2, ease: "power2.inOut" }, .3)
+        .to("#kael-aura", { opacity: 0, scale: .65, duration: 1.4, ease: "power2.inOut" }, 3.7)
+        .to("#kael-contact", { opacity: 1, scale: 1.35, transformOrigin: "102px 214px", duration: .45, ease: "back.out(1.6)" }, 2.65)
+        .to("#kael-contact", { opacity: 0, scale: .5, duration: 1.25, ease: "power2.inOut" }, 3.45);
+      drawInOut("#kael-slash-wide, #kael-slash-core", 1.1, 3.05, 4.75);
+
+      tl.to("#lyra-rings", { opacity: 1, rotation: 300, svgOrigin: "306 235", duration: 2.25, ease: "power2.inOut" }, .4)
+        .to("#lyra-rings", { opacity: 0, rotation: 390, scale: .72, duration: 1.45, ease: "power2.inOut" }, 3.65)
+        .to("#lyra-drops", { opacity: 1, y: -10, duration: .75, ease: "power2.out" }, 2.25)
+        .to("#lyra-drops", { opacity: 0, y: 8, duration: 1.25, ease: "power2.in" }, 3.2);
+      drawInOut("#lyra-wave-a, #lyra-wave-b", 1.2, 3.1, 4.9);
+
+      tl.to("#brannock-root", { opacity: 1, scale: 1.25, transformOrigin: "307px 272px", duration: 1.2, ease: "power2.inOut" }, .45)
+        .to("#brannock-root", { opacity: 0, scale: .75, duration: 1.4, ease: "power2.inOut" }, 3.8)
+        .to("#brannock-crack", { opacity: 1, duration: .3 }, 2.75)
+        .to("#brannock-crack", { opacity: 0, duration: 1.55, ease: "power2.inOut" }, 3.35)
+        .to("#brannock-debris", { opacity: 1, y: -18, duration: .55, ease: "power2.out" }, 2.75)
+        .to("#brannock-debris", { opacity: 0, y: 5, duration: 1.2, ease: "power2.in" }, 3.35);
+      drawInOut("#brannock-hammer", 1, 2.95, 4.55);
+
+      tl.to("#zephyra-charge", { opacity: 1, scale: 1.45, rotation: 210, transformOrigin: "0 0", duration: 2.05, ease: "power2.inOut" }, .35)
+        .to("#zephyra-charge", { opacity: 0, scale: .55, duration: .4, ease: "power2.in" }, 2.55)
+        .to("#zephyra-arrow", { opacity: 1, x: -181, y: 6, duration: .72, ease: "power3.in" }, 2.58)
+        .to("#zephyra-arrow", { opacity: 0, duration: .15 }, 3.3)
+        .to("#zephyra-hit", { opacity: 1, scale: 1.3, transformOrigin: "0 0", duration: .32, ease: "back.out(1.7)" }, 3.25)
+        .to("#zephyra-hit", { opacity: 0, scale: .45, duration: 1.35, ease: "power2.inOut" }, 3.62);
+
+      tl.to("#solenne-rings", { opacity: .9, scale: 1.12, transformOrigin: "343px 280px", duration: 1.75, ease: "power2.inOut" }, .65)
+        .to("#solenne-rays", { opacity: .72, duration: 1.4, ease: "power2.inOut" }, 1.2)
+        .to("#solenne-motes", { opacity: .8, y: -16, duration: 1.8, ease: "sine.inOut" }, 1.5)
+        .to(["#solenne-rays", "#solenne-motes"], { opacity: 0, y: 0, duration: 1.45, ease: "power2.inOut" }, 3.65)
+        .to("#solenne-rings", { opacity: 0, scale: .72, duration: 1.35, ease: "power2.inOut" }, 4.05);
+
+      tl.to("#nyx-charge", { opacity: 1, scale: 1.45, rotation: -240, transformOrigin: "288px 191px", duration: 1.9, ease: "power2.inOut" }, .35)
+        .to("#nyx-charge", { opacity: 0, scale: .55, duration: .75, ease: "power2.in" }, 2.55)
+        .to("#nyx-rift", { opacity: 1, scaleX: 1.15, transformOrigin: "103px 215px", duration: .45, ease: "back.out(1.4)" }, 2.75)
+        .to("#nyx-rift", { opacity: 0, scaleX: .08, duration: 1.55, ease: "power2.inOut" }, 3.45);
+      drawInOut("#nyx-sweep", 1.1, 3.05, 4.85);
+
+      window.__timelines.main = tl;
+    </script>
+  </body>
+</html>
