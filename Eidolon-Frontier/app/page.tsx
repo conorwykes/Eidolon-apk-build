@@ -2842,7 +2842,7 @@ export default function GatesOfAzura() {
       // blink. One table drives all of them.
       const castSequence = !burst && startsNormalPose ? getNormalCastSequence(unit.id, stars) : undefined;
       if (burst && step === 0) {
-        for (let frame = 0; frame < burstOpeningFrames; frame += 1) {
+        for (const frame of Array.from({ length: burstOpeningFrames }, (_, index) => index)) {
           setAttackFxs((current) => current.map((fx) => fx.id === attackId ? {
             ...fx,
             frame,
@@ -2858,7 +2858,8 @@ export default function GatesOfAzura() {
         // intermediate action pose before the next packet rather than skipping
         // directly to the contact drawing. The highest rarities therefore gain
         // visible motion, not merely a larger asset list.
-        for (let frame = Math.max(burstActionStart, previousBurstFrame + 1); frame < attackFrame; frame += 1) {
+        const burstActionFrameStart = Math.max(burstActionStart, previousBurstFrame + 1);
+        for (const frame of Array.from({ length: Math.max(0, attackFrame - burstActionFrameStart) }, (_, index) => burstActionFrameStart + index)) {
           setAttackFxs((current) => current.map((fx) => fx.id === attackId ? {
             ...fx,
             frame,
@@ -3051,7 +3052,7 @@ export default function GatesOfAzura() {
 
     if (burst) {
       const recoveryStart = Math.max(0, battleSprites.burst.length - Math.max(2, Math.round(battleSprites.burst.length * 0.18)));
-      for (let frame = recoveryStart; frame < battleSprites.burst.length; frame += 1) {
+      for (const frame of Array.from({ length: Math.max(0, battleSprites.burst.length - recoveryStart) }, (_, index) => recoveryStart + index)) {
         setAttackFxs((current) => current.map((fx) => fx.id === attackId ? {
           ...fx,
           frame,
