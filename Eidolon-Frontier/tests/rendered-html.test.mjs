@@ -68,7 +68,7 @@ test("keeps Zephyra and Solenne's grouped ranged choreography without attack VFX
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const RANGED_NORMAL_UNITS = new Set<BattleUnitId>\(\["zephyra", "solenne"\]\)/);
   assert.match(source, /const hits = burst \? combatProfile\.burstHits : normalAttackChain\.length;/);
-  assert.match(source, /const hitMultiplier = burst \? 1 \/ animationSteps : normalBeat\.multiplier;/);
+  assert.match(source, /const hitMultiplier = burst \? \(isZephyraBurstVolley \? 1 : 1 \/ animationSteps\) : normalBeat\.multiplier;/);
   assert.match(source, /hit: burst \? step \+ 1 : attackFrame \+ 1/);
   assert.match(source, /getNormalCastSequence\(unit\.id, stars\)/);
   assert.match(source, /for \(const drawing of castSequence\)/);

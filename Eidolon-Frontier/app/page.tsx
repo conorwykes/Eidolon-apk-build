@@ -42,7 +42,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   BATTLE_CONTACT_DROP_Y,
   BATTLE_CONTACT_GAP_X,
@@ -2881,6 +2881,12 @@ export default function GatesOfAzura() {
         } : fx));
         await waitForBattle(burst ? 55 : rapidNormalChain ? startsNormalPose ? 42 : 10 : 65);
       }
+      // Zephyra's Burst is one piercing volley: the arrow keeps flying
+      // through every authored pose and only lands as a single full-force
+      // hit per foe on the final frame, instead of splitting damage across
+      // each intermediate pose the way every other unit's combo does.
+      const isZephyraBurstVolley = burst && unit.id === "zephyra";
+      const landsThisStep = !isZephyraBurstVolley || step === animationSteps - 1;
       const supportBurst = burst && !combatProfile.burstDoesDamage;
       const sparkTargets = supportBurst ? new Set<string>() : await resolveSparkFrame(unitId, targets.map((target) => target.instanceId));
       const critical = !supportBurst && Math.random() < CRITICAL_CHANCE;
@@ -2895,7 +2901,7 @@ export default function GatesOfAzura() {
         const variance = 0.93 + Math.random() * 0.14;
         const spark = sparkTargets.has(target.instanceId);
         const wasAlive = target.hp > 0;
-        const hitMultiplier = burst ? 1 / animationSteps : normalBeat.multiplier;
+        const hitMultiplier = burst ? (isZephyraBurstVolley ? 1 : 1 / animationSteps) : normalBeat.multiplier;
         const damage = burst && !combatProfile.burstDoesDamage
           ? 0
           : Math.max(1, Math.round(totalBase * hitMultiplier * advantage * variance * (critical ? CRITICAL_DAMAGE_MULTIPLIER : 1) * (spark ? SPARK_DAMAGE_MULTIPLIER : 1)));
@@ -2903,6 +2909,12 @@ export default function GatesOfAzura() {
         const kind: CrystalKind = killed ? (enemy.boss ? "material" : "gold") : heartDrop && targetIndex === 0 ? "heart" : "burst";
         return { target, enemy, advantage, damage, killed, kind, spark, wasAlive, fxId: `${attackId}-hit-${step}-${target.instanceId}` };
       });
+
+      if (!landsThisStep) {
+        setAttackFxs((current) => current.map((fx) => fx.id === attackId ? { ...fx, stage: "release" } : fx));
+        await waitForBattle(burst ? 18 : rapidNormalChain ? 12 : 22);
+        continue;
+      }
 
       if (anySpark) lastSparkAt.current = now;
 
@@ -3855,23 +3867,95 @@ export default function GatesOfAzura() {
             const numeralSlot = Math.max(0, fx.hit - 1) % 6;
             const numeralDriftX = [0, 13, -11, 7, -15, 4][numeralSlot];
             const numeralDriftY = [0, -9, -5, -15, -2, -12][numeralSlot];
-            return <div
-              className={`impact-stack concurrent-impact impact-count-${battle.enemies.length} impact-target-${targetIndex + 1} impact-${sourceUnit.element} impact-unit-${sourceUnit.id} burst-impact-frame-${fx.frame} ${fx.burst ? "burst-impact" : ""} ${fx.finisher ? "finisher-impact" : ""} ${fx.spark ? "spark-hit" : ""} ${fx.critical ? "critical-hit" : ""}`}
-              key={fx.id}
-              style={{
-                left: `${weaponContact.x - 50}px`,
-                top: `${weaponContact.y - 50}px`,
-                bottom: "auto",
-                "--numeral-drift-x": `${numeralDriftX}px`,
-                "--numeral-drift-y": `${numeralDriftY}px`,
-              } as CSSProperties}
-            >
-              {gameSettings.damageNumbers && <>
-                <strong>{fx.damage.toLocaleString()}</strong>
-                {impactLabel && <small>{impactLabel}</small>}
-                {fx.weakness && <em>WEAKNESS</em>}
-              </>}
-            </div>;
+            // Zephyra's shots are a real projectile: computed from her own
+            // field position to the exact contact point so the arrow both
+            // travels and faces whatever it is currently flying at. Her
+            // Burst volley overshoots past the contact point instead of
+            // stopping dead on the connecting pose, reading as one arrow
+            // punching through the whole formation.
+            const zephyraShot = sourceUnit.id === "zephyra" ? (() => {
+              const casterIndex = Math.max(0, battle.party.findIndex((member) => member.id === fx.unitId));
+              const casterSlot = HERO_FORMATION[casterIndex] ?? HERO_FORMATION[0];
+              const casterX = battlefieldWidth - casterSlot.right - casterSlot.width / 2;
+              const casterY = 355 - casterSlot.bottom - 70;
+              const overshoot = fx.burst ? 1.35 : 1;
+              const dx = (weaponContact.x - casterX) * overshoot;
+              const dy = (weaponContact.y - casterY) * overshoot;
+              const angle = Math.atan2(weaponContact.y - casterY, weaponContact.x - casterX) * 180 / Math.PI;
+              return { casterX, casterY, dx, dy, angle };
+            })() : null;
+            // Solenne's normal attack already lands as a vertical strike, so
+            // a beam falling onto the same contact point and a floor sigil
+            // beneath it read as one continuous invocation rather than a
+            // separate effect bolted on top.
+            const solenneStrike = sourceUnit.id === "solenne" && !fx.burst;
+            const groundY = 355 - targetPosition.bottom;
+            return <Fragment key={fx.id}>
+              {zephyraShot && (
+                <span
+                  className={`zephyra-arrow-shot ${fx.burst ? "zephyra-arrow-shot-burst" : ""}`}
+                  style={{
+                    left: `${zephyraShot.casterX}px`,
+                    top: `${zephyraShot.casterY}px`,
+                    "--arrow-dx": `${zephyraShot.dx}px`,
+                    "--arrow-dy": `${zephyraShot.dy}px`,
+                    "--arrow-angle": `${zephyraShot.angle}deg`,
+                  } as CSSProperties}
+                  aria-hidden="true"
+                >
+                  <img src="/effects/projectiles/zephyra-arrow.webp" alt="" draggable={false} />
+                </span>
+              )}
+              {solenneStrike && (
+                <>
+                  <span
+                    className="solenne-beam"
+                    style={{
+                      left: `${weaponContact.x}px`,
+                      "--beam-height": `${Math.max(40, groundY + 30)}px`,
+                    } as CSSProperties}
+                    aria-hidden="true"
+                  />
+                  <span
+                    className="solenne-sigil"
+                    style={{
+                      left: `${weaponContact.x}px`,
+                      top: `${groundY - 6}px`,
+                    } as CSSProperties}
+                    aria-hidden="true"
+                  >
+                    <svg viewBox="0 0 100 40">
+                      <ellipse cx="50" cy="20" rx="44" ry="15" fill="none" stroke="#fffdf0" strokeWidth="2.4" opacity={0.9} />
+                      <ellipse cx="50" cy="20" rx="30" ry="10" fill="none" stroke="#fff3c2" strokeWidth="1.6" opacity={0.75} />
+                      {Array.from({ length: 8 }, (_, index) => {
+                        const theta = (index / 8) * Math.PI * 2;
+                        const x1 = 50 + Math.cos(theta) * 44;
+                        const y1 = 20 + Math.sin(theta) * 15;
+                        const x2 = 50 + Math.cos(theta) * 54;
+                        const y2 = 20 + Math.sin(theta) * 19;
+                        return <line key={index} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#fffdf0" strokeWidth="1.8" opacity={0.8} />;
+                      })}
+                    </svg>
+                  </span>
+                </>
+              )}
+              <div
+                className={`impact-stack concurrent-impact impact-count-${battle.enemies.length} impact-target-${targetIndex + 1} impact-${sourceUnit.element} impact-unit-${sourceUnit.id} burst-impact-frame-${fx.frame} ${fx.burst ? "burst-impact" : ""} ${fx.finisher ? "finisher-impact" : ""} ${fx.spark ? "spark-hit" : ""} ${fx.critical ? "critical-hit" : ""}`}
+                style={{
+                  left: `${weaponContact.x - 50}px`,
+                  top: `${weaponContact.y - 50}px`,
+                  bottom: "auto",
+                  "--numeral-drift-x": `${numeralDriftX}px`,
+                  "--numeral-drift-y": `${numeralDriftY}px`,
+                } as CSSProperties}
+              >
+                {gameSettings.damageNumbers && <>
+                  <strong>{fx.damage.toLocaleString()}</strong>
+                  {impactLabel && <small>{impactLabel}</small>}
+                  {fx.weakness && <em>WEAKNESS</em>}
+                </>}
+              </div>
+            </Fragment>;
           })}
           {damageFxs.some((fx) => fx.spark) && <div className="spark-counter" key={`spark-${battle.combo}-${screenImpact}`}><Sparkles /> SPARK!!</div>}
           {crystalFxs.map((fx) => {

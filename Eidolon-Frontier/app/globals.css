@@ -300,6 +300,21 @@ button:not(:disabled):active{transform:scale(.975);filter:brightness(1.08)}
 .fx-burst .field-unit.active{z-index:25;animation:none!important;transform:translate(var(--contact-x),var(--contact-y)) scale(1.24)!important;transition:transform .16s cubic-bezier(.1,.85,.16,1);filter:brightness(1.38) drop-shadow(0 11px 7px #000d) drop-shadow(0 0 22px currentColor)}
 .fx-attacking .field-unit.active .battle-unit-sprite{animation:contactStance .24s ease-in-out infinite alternate}
 .fx-burst .field-unit.active .battle-unit-sprite{animation:burstStance .32s ease-in-out infinite alternate}
+/* Solenne's Burst is a stationary invocation: she stays planted at her idle
+   spot rather than lunging toward the enemy like the melee/ranged casts do.
+   Each selector below repeats the higher-specificity attack-stage qualifier
+   so this wins over every other bursting/stage transform rule regardless of
+   where those are declared in the sheet. */
+.field-unit.unit-solenne.active.bursting,
+.field-unit.unit-solenne.active.bursting.attack-stage-approach,
+.field-unit.unit-solenne.active.bursting.attack-stage-windup,
+.field-unit.unit-solenne.active.bursting.attack-stage-release,
+.field-unit.unit-solenne.active.bursting.attack-stage-flight,
+.field-unit.unit-solenne.active.bursting.attack-stage-impact,
+.field-unit.unit-solenne.active.bursting.attack-stage-hitstop,
+.field-unit.unit-solenne.active.bursting.attack-stage-recover,
+.field-unit.unit-solenne.active.bursting.attack-stage-anchored,
+.field-unit.unit-solenne.active.bursting.attack-stage-return{transform:none!important;filter:drop-shadow(0 8px 5px #000b) drop-shadow(0 0 14px currentColor)!important}
 .fx-attacking .field-unit.active::after{content:none}
 .enemy-party .enemy-figure.enemy-hit{animation:enemyContactHit .18s ease-out both!important;z-index:17;filter:saturate(1.08) contrast(1.06)}
 .enemy-party .enemy-figure.enemy-hit::after{content:none}
@@ -1284,10 +1299,10 @@ emblem{
 .field-unit.unit-lyra.form-3 .battle-unit-sprite{scale:-.9049 .9772;bottom:-7.2px}
 .field-unit.unit-lyra.form-4 .battle-unit-sprite{scale:-1 1.08;bottom:-7.2px}
 .field-unit.unit-lyra.form-5 .battle-unit-sprite{scale:1 1.08;bottom:-10.7px}
-.field-unit.unit-brannock.form-2 .battle-unit-sprite{scale:-1.6042 1.6042;bottom:-40px}
-.field-unit.unit-brannock.form-3 .battle-unit-sprite{scale:-1.335 1.335;bottom:-7.8px}
-.field-unit.unit-brannock.form-4 .battle-unit-sprite{scale:-1.3732 1.3732;bottom:-8.5px}
-.field-unit.unit-brannock.form-5 .battle-unit-sprite{scale:-1.35 1.35;bottom:-10px}
+.field-unit.unit-brannock.form-2 .battle-unit-sprite{scale:-.7511 .8112;bottom:-40px}
+.field-unit.unit-brannock.form-3 .battle-unit-sprite{scale:-.9049 .9772;bottom:-7.8px}
+.field-unit.unit-brannock.form-4 .battle-unit-sprite{scale:-1 1.08;bottom:-8.5px}
+.field-unit.unit-brannock.form-5 .battle-unit-sprite{scale:-1 1.08;bottom:-10px}
 .field-unit.unit-zephyra.form-2 .battle-unit-sprite{scale:-1.2662 1.2662;bottom:-19.4px}
 .field-unit.unit-zephyra.form-3 .battle-unit-sprite{scale:-1.2832 1.2832;bottom:-17.5px}
 .field-unit.unit-zephyra.form-4 .battle-unit-sprite{scale:-1.3229 1.3229;bottom:-11.9px}
@@ -3382,4 +3397,61 @@ html.game-background-paused *::after{
 
 @media (prefers-reduced-motion:reduce){
   .story-unit.story-speaker-sprite img{animation:none!important}
+}
+
+/* Zephyra's arrow: her own authored Burst-frame artwork (the charged,
+   lightning-wrapped shot from frame 14, cropped to just the flying arrow and
+   feathered on its trailing edge) flown as a real projectile from her own
+   field position to the exact contact point on whatever she is currently
+   hitting, rotated to face that flight direction. Her Burst volley
+   (zephyra-arrow-shot-burst) overshoots past the contact point instead of
+   stopping on the connecting pose, so the shot reads as piercing through
+   rather than ending on a frame. */
+.zephyra-arrow-shot{
+  position:absolute;z-index:16;width:64px;height:28px;margin-top:-14px;
+  pointer-events:none;
+  animation:zephyraArrowFlight calc(.26s * var(--battle-time-scale,1)) cubic-bezier(.22,.68,.15,1) forwards;
+}
+.zephyra-arrow-shot-burst{animation-duration:calc(.32s * var(--battle-time-scale,1))}
+.zephyra-arrow-shot img{width:100%;height:100%;display:block;object-fit:contain;filter:drop-shadow(0 0 5px #fff3a8cc) drop-shadow(0 2px 2px #0009)}
+@keyframes zephyraArrowFlight{
+  0%{transform:translate(0,0) rotate(var(--arrow-angle));opacity:0}
+  16%{opacity:1}
+  70%{opacity:1}
+  100%{transform:translate(var(--arrow-dx),var(--arrow-dy)) rotate(var(--arrow-angle));opacity:0}
+}
+
+/* Solenne's normal attack: a white beam falls onto the same contact point
+   her strike already lands on, blooming into a floor sigil beneath the foe.
+   The sigil is perspective-tilted like .field-unit-aura so it reads as lying
+   flat on the ground rather than facing the camera. */
+.solenne-beam{
+  position:absolute;z-index:15;top:-30px;width:20px;margin-left:-10px;height:0;
+  pointer-events:none;border-radius:50% 50% 40% 40% / 60% 60% 40% 40%;
+  background:linear-gradient(180deg,transparent,#fffdf0 12%,#fff6d2 70%,#ffe89a);
+  filter:drop-shadow(0 0 10px #fff6cfcc) drop-shadow(0 0 22px #ffe89a99);
+  animation:solenneBeamFall calc(.34s * var(--battle-time-scale,1)) cubic-bezier(.22,.6,.12,1) forwards;
+}
+@keyframes solenneBeamFall{
+  0%{height:0;opacity:0}
+  12%{opacity:1}
+  55%{height:var(--beam-height);opacity:1}
+  82%{height:var(--beam-height);opacity:.85}
+  100%{height:var(--beam-height);opacity:0}
+}
+.solenne-sigil{
+  position:absolute;z-index:14;width:74px;height:30px;margin-left:-37px;margin-top:-15px;
+  pointer-events:none;opacity:0;transform-origin:center;
+  animation:solenneSigilBloom calc(.55s * var(--battle-time-scale,1)) ease-out calc(.1s * var(--battle-time-scale,1)) forwards;
+}
+.solenne-sigil svg{width:100%;height:100%;display:block;filter:drop-shadow(0 0 8px #fff3c2cc)}
+@keyframes solenneSigilBloom{
+  0%{opacity:0;transform:scale(.4) rotate(-20deg)}
+  30%{opacity:1}
+  70%{opacity:.85;transform:scale(1) rotate(5deg)}
+  100%{opacity:0;transform:scale(1.18) rotate(12deg)}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .zephyra-arrow-shot,.solenne-beam,.solenne-sigil{animation:none!important;opacity:0!important}
 }
