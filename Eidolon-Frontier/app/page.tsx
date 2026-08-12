@@ -928,18 +928,22 @@ const NORMAL_CADENCE: Partial<Record<BattleUnitId, NormalCadence>> = {
   kael: { tick: 34, phrase: 150 },
   lyra: { tick: 26, phrase: 96 },
   brannock: { tick: 96, phrase: 190 },
-  nyx: { tick: 14, phrase: 76 },
+  // Nyx's 5-star cadence read noticeably faster than every other unit's —
+  // slowed toward Kael's pacing so hits have time to register.
+  nyx: { tick: 24, phrase: 118 },
 };
 
 function getNormalCadence(unitId: BattleUnitId, stars: StarTier): NormalCadence {
   if (unitId === "lyra") {
+    // 5-star in particular read as a blur — slowed every tier down while
+    // keeping the same escalating-speed shape across 2-5 star.
     return stars === 2
-      ? { tick: 74, phrase: 156 }
+      ? { tick: 90, phrase: 180 }
       : stars === 3
-        ? { tick: 46, phrase: 118 }
+        ? { tick: 62, phrase: 140 }
         : stars === 4
-          ? { tick: 26, phrase: 88 }
-          : { tick: 14, phrase: 58 };
+          ? { tick: 38, phrase: 108 }
+          : { tick: 24, phrase: 92 };
   }
   const base = NORMAL_CADENCE[unitId] ?? DEFAULT_NORMAL_CADENCE;
   const pace = stars === 2 ? 1.24 : stars === 3 ? 1.08 : stars === 4 ? 0.94 : 0.8;
@@ -3886,7 +3890,13 @@ export default function GatesOfAzura() {
               const casterSlot = HERO_FORMATION[casterIndex] ?? HERO_FORMATION[0];
               const casterX = battlefieldWidth - casterSlot.right - casterSlot.width / 2;
               const casterY = 355 - casterSlot.bottom - 70;
-              const overshoot = fx.burst ? 1.35 : 1;
+              // The shared weaponContact point sits at the enemy's near
+              // (weapon-side) edge, roughly 20-50px short of the sprite body
+              // in screen space — melee hits bridge that gap with their own
+              // lunge animation overlapping the target, but Zephyra stays
+              // planted, so her arrow needs real extra travel to visibly
+              // connect instead of stopping just short of the enemy.
+              const overshoot = fx.burst ? 1.35 : 1.2;
               const dx = (weaponContact.x - casterX) * overshoot;
               const dy = (weaponContact.y - casterY) * overshoot;
               const angle = Math.atan2(weaponContact.y - casterY, weaponContact.x - casterX) * 180 / Math.PI;
