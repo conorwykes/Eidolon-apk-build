@@ -52,6 +52,12 @@ import {
   type BattleUnitId,
 } from "../game/battle-choreography";
 import { getBattleDuration, getBattleTimeScale, type BattleSpeed } from "../game/battle-timing";
+import {
+  buildActionTimeline,
+  getNormalCadence,
+  getNormalCastSequence,
+  type ActionTimeline,
+} from "../game/attack-timeline";
 import { AnimatedBattleStage, BurstIntroOverlay } from "./components/BattleRemotion";
 
 type Screen =
@@ -72,17 +78,17 @@ type Screen =
   | "shop";
 type ElementKey = "fire" | "water" | "earth" | "thunder" | "light" | "dark";
 type Nature = "Valiant" | "Stalwart" | "Fierce" | "Mystic" | "Vital";
-type StarTier = 2 | 3 | 4 | 5;
+export type StarTier = 2 | 3 | 4 | 5;
 type BattleMode = "story" | "rift" | "trial" | "tower" | "hunt" | "raid" | "vault";
-type CrystalKind = "burst" | "heart" | "gold" | "material";
-type AttackScope = "single" | "all";
-type AttackStage = "approach" | "windup" | "release" | "flight" | "impact" | "hitstop" | "recover" | "anchored" | "return";
+export type CrystalKind = "burst" | "heart" | "gold" | "material";
+export type AttackScope = "single" | "all";
+export type AttackStage = "approach" | "windup" | "release" | "flight" | "impact" | "hitstop" | "recover" | "anchored" | "return";
 
 const CRITICAL_CHANCE = 1 / 32;
 const CRITICAL_DAMAGE_MULTIPLIER = 1.5;
 const SPARK_DAMAGE_MULTIPLIER = 1.25;
 
-type Unit = {
+export type Unit = {
   id: BattleUnitId;
   name: string;
   title: string;
@@ -108,7 +114,7 @@ type Unit = {
   formTitles: Record<StarTier, string>;
 };
 
-type BattleSpriteSet = { idle: string[]; attack: string[]; burst: string[] };
+export type BattleSpriteSet = { idle: string[]; attack: string[]; burst: string[] };
 
 const PROGRESSIVE_BURST_FRAME_COUNTS: Record<StarTier, Record<BattleUnitId, number>> = {
   2: { kael: 6, lyra: 6, brannock: 6, zephyra: 6, solenne: 6, nyx: 6 },
@@ -138,7 +144,7 @@ type UnitStarProfile = {
   ascension: { seals: number; cores: number };
 };
 
-type UnitCombatProfile = {
+export type UnitCombatProfile = {
   attackName: string;
   burstName: string;
   attackScope: AttackScope;
@@ -155,7 +161,7 @@ type UnitCombatProfile = {
   burstDoesDamage: boolean;
 };
 
-type NormalAttackBeat = {
+export type NormalAttackBeat = {
   frame: number;
   multiplier: number;
   pose: number;
@@ -181,7 +187,7 @@ type EnemyInstance = {
   ailments: string[];
 };
 
-type Quest = {
+export type Quest = {
   id: number;
   chapter: number;
   name: string;
@@ -197,7 +203,7 @@ type Quest = {
   waves: { enemies: string[] }[];
 };
 
-type SaveState = {
+export type SaveState = {
   level: number;
   xp: number;
   gold: number;
@@ -240,7 +246,7 @@ type SaveState = {
   achievements: string[];
 };
 
-type BattleState = {
+export type BattleState = {
   questId: number;
   wave: number;
   enemies: EnemyInstance[];
@@ -269,7 +275,7 @@ type CombatFx = {
   label: string;
 };
 
-type AttackFx = {
+export type AttackFx = {
   id: string;
   unitId: BattleUnitId;
   targetEnemyId: string;
@@ -290,7 +296,7 @@ type PendingSparkImpact = {
   resolve: (sparkTargets: Set<string>) => void;
 };
 
-type DamageFx = {
+export type DamageFx = {
   id: string;
   unitId: BattleUnitId;
   targetEnemyId: string;
@@ -304,7 +310,7 @@ type DamageFx = {
   finisher: boolean;
 };
 
-type CrystalFx = {
+export type CrystalFx = {
   id: string;
   targetEnemyId: string;
   unitId: string;
@@ -363,7 +369,7 @@ type GameSettings = {
   reducedEffects: boolean;
 };
 
-type SfxKind = "tap" | "hit" | "spark" | "burst" | "crystal" | "warning" | "victory" | "evolve" | "guard" | "buy" | "equip" | "summon" | "denied";
+export type SfxKind = "tap" | "hit" | "spark" | "burst" | "crystal" | "warning" | "victory" | "evolve" | "guard" | "buy" | "equip" | "summon" | "denied";
 
 const SFX_FILES: Record<SfxKind, string> = {
   tap: "/audio/sfx/ui-tap.wav",
@@ -904,61 +910,14 @@ const NORMALISE_AUTHORED_CHAINS = true;
 
 const ZEPHYRA_RANGED_ADVANCE = 0;
 
-const LYRA_STEP_SEQUENCES: Record<StarTier, readonly { frame: number; stage: AttackStage; hold: number }[]> = {
-  2: [{ frame: 0, stage: "windup", hold: 48 }, { frame: 1, stage: "release", hold: 30 }],
-  3: [{ frame: 0, stage: "windup", hold: 34 }, { frame: 1, stage: "release", hold: 24 }],
-  4: [{ frame: 0, stage: "windup", hold: 24 }, { frame: 1, stage: "release", hold: 18 }],
-  5: [{ frame: 0, stage: "windup", hold: 15 }, { frame: 1, stage: "release", hold: 11 }],
-};
-
-
 // Ranged units hold their ground; melee units still travel to contact.
 const RANGED_NORMAL_UNITS = new Set<BattleUnitId>(["zephyra", "solenne"]);
 
-// A single global 10 ms gap made every authored chain read as the same
-// machine-gun rattle. Cadence is characterisation: `tick` is the pause between
-// beats inside one phrase, `phrase` the pause between authored phrases.
-type NormalCadence = { tick: number; phrase: number };
-
-const DEFAULT_NORMAL_CADENCE: NormalCadence = { tick: 10, phrase: 140 };
-
-const NORMAL_CADENCE: Partial<Record<BattleUnitId, NormalCadence>> = {
-  zephyra: { tick: 10, phrase: 140 },
-  solenne: { tick: 10, phrase: 140 },
-  kael: { tick: 34, phrase: 150 },
-  lyra: { tick: 26, phrase: 96 },
-  brannock: { tick: 96, phrase: 190 },
-  // Nyx's 5-star cadence read noticeably faster than every other unit's —
-  // slowed toward Kael's pacing so hits have time to register.
-  nyx: { tick: 24, phrase: 118 },
-};
-
-function getNormalCadence(unitId: BattleUnitId, stars: StarTier): NormalCadence {
-  if (unitId === "lyra") {
-    // 5-star in particular read as a blur — slowed every tier down while
-    // keeping the same escalating-speed shape across 2-5 star.
-    return stars === 2
-      ? { tick: 90, phrase: 180 }
-      : stars === 3
-        ? { tick: 62, phrase: 140 }
-        : stars === 4
-          ? { tick: 38, phrase: 108 }
-          : { tick: 24, phrase: 92 };
-  }
-  const base = NORMAL_CADENCE[unitId] ?? DEFAULT_NORMAL_CADENCE;
-  const pace = stars === 2 ? 1.24 : stars === 3 ? 1.08 : stars === 4 ? 0.94 : 0.8;
-  return { tick: Math.round(base.tick * pace), phrase: Math.round(base.phrase * pace) };
-}
-
-function getNormalCastSequence(unitId: BattleUnitId, stars: StarTier) {
-  if (unitId === "lyra") return LYRA_STEP_SEQUENCES[stars];
-  const hold = stars === 2 ? 72 : stars === 3 ? 58 : stars === 4 ? 46 : 36;
-  return [
-    { frame: 0, stage: "windup" as const, hold },
-    { frame: 1, stage: "windup" as const, hold },
-    { frame: 2, stage: "release" as const, hold: Math.max(24, hold - 12) },
-  ];
-}
+// Migration gate for the new data-driven ActionTimeline (game/attack-timeline.ts).
+// Units listed here run through buildActionTimeline + playActionTimeline instead
+// of the old per-hit imperative loop in queueAttack. Expanded unit-by-unit while
+// each addition is verified live; the old loop is deleted once every unit is here.
+const NEW_TIMELINE_UNITS = new Set<BattleUnitId>(["kael"]);
 
 const normalisedChainCache = new Map<string, readonly NormalAttackBeat[]>();
 
@@ -2722,6 +2681,197 @@ export default function GatesOfAzura() {
     }
   };
 
+  // Generic executor for a pre-built ActionTimeline: the one place that owns
+  // an attack's full lifecycle (approach, per-beat pose playback, live
+  // damage/loot resolution, wrap-up, UI unlock). Not wired into queueAttack
+  // yet — Phase 0 lands this alongside the existing per-unit loop as dead
+  // code until its output has been verified against it beat-for-beat.
+  const playActionTimeline = async (timeline: ActionTimeline, quest: Quest) => {
+    const unitId = timeline.unitId;
+    const unit = getUnit(unitId);
+    activeAttackIds.current.add(unitId);
+
+    updateBattleLive((state) => ({
+      ...state,
+      party: state.party.map((member) => member.id === unitId ? { ...member, acted: true, guarding: false, gauge: timeline.burst ? 0 : member.gauge } : member),
+      message: state.targetEnemyId ? timeline.launchMessageWithFocus : timeline.launchMessageWithoutFocus,
+    }));
+
+    setAttackFxs((current) => [...current, {
+      id: timeline.attackId,
+      unitId,
+      stage: "approach",
+      volley: 0,
+      ...timeline.initialFx,
+    }]);
+    playSfx(timeline.launchSfx);
+
+    for (const node of timeline.approach) {
+      if (Object.keys(node.patch).length > 0) {
+        setAttackFxs((current) => current.map((fx) => fx.id === timeline.attackId ? { ...fx, ...node.patch } : fx));
+      }
+      if (node.sfx) playSfx(node.sfx);
+      await waitForBattle(node.holdMs);
+    }
+
+    for (const beat of timeline.beats) {
+      const state = battleRef.current;
+      if (!state) break;
+      // A move owns the targets it selected at launch — a single-target
+      // chain never hops to a second enemy after a lethal hit.
+      const targets = state.enemies.filter((enemy) => timeline.lockedTargetIds.includes(enemy.instanceId));
+      const primaryTarget = targets[0];
+      if (!primaryTarget) break;
+      const visualTargetId = primaryTarget.instanceId;
+
+      for (const node of beat.poses) {
+        setAttackFxs((current) => current.map((fx) => fx.id === timeline.attackId ? { ...fx, ...node.patch, targetEnemyId: visualTargetId } : fx));
+        if (node.sfx) playSfx(node.sfx);
+        await waitForBattle(node.holdMs);
+      }
+
+      const impact = beat.impact;
+      const supportBurst = timeline.supportBurst;
+      const sparkTargets = timeline.resolvesSpark ? await resolveSparkFrame(unitId, targets.map((target) => target.instanceId)) : new Set<string>();
+      const critical = !supportBurst && Math.random() < CRITICAL_CHANCE;
+      const now = performance.now();
+      const timingScale = getBattleTimeScale(battleSpeed);
+      const heartDrop = !supportBurst && primaryTarget.hp > 0 && impact.heartDropEligible && state.party.some((member) => member.hp > 0 && member.hp < getFormStat(getUnit(member.id), save.unitStars[member.id] ?? 3, save.unitLevels[member.id] ?? 1, "hp"));
+      const anySpark = sparkTargets.size > 0;
+      const ailment = (timeline.burst && timeline.burstAilment) || (anySpark && timeline.sparkAilment) || (critical && timeline.critAilment) || "";
+      const outcomes = targets.map((target, targetIndex) => {
+        const enemy = getEnemy(target.enemyId);
+        const advantage = ELEMENTS[unit.element].strong === enemy.element ? 1.45 : ELEMENTS[enemy.element].strong === unit.element ? 0.78 : 1;
+        const variance = 0.93 + Math.random() * 0.14;
+        const spark = sparkTargets.has(target.instanceId);
+        const wasAlive = target.hp > 0;
+        const damage = supportBurst
+          ? 0
+          : Math.max(1, Math.round(timeline.totalBase * impact.hitMultiplier * advantage * variance * (critical ? CRITICAL_DAMAGE_MULTIPLIER : 1) * (spark ? SPARK_DAMAGE_MULTIPLIER : 1)));
+        const killed = wasAlive && target.hp - damage <= 0;
+        const kind: CrystalKind = killed ? (enemy.boss ? "material" : "gold") : heartDrop && targetIndex === 0 ? "heart" : "burst";
+        return { target, enemy, advantage, damage, killed, kind, spark, wasAlive, fxId: `${timeline.attackId}-hit-${impact.step}-${target.instanceId}` };
+      });
+
+      if (!impact.lands) {
+        setAttackFxs((current) => current.map((fx) => fx.id === timeline.attackId ? { ...fx, stage: "release" } : fx));
+        await waitForBattle(impact.nonLandingHoldMs);
+        continue;
+      }
+
+      if (anySpark) lastSparkAt.current = now;
+
+      const impactFeedback = supportBurst
+        ? `${unit.name} · ${timeline.burstName} · HEALING LIGHT`
+        : [
+            unit.name,
+            timeline.attackScope === "all" ? "ALL-FOE" : "",
+            anySpark ? "AETHER SPARK +25%" : "",
+            critical ? "CRITICAL +50%" : "",
+            !anySpark && !critical && outcomes.some((outcome) => outcome.advantage > 1) ? "WEAKNESS!" : "",
+          ].filter(Boolean).join(" · ");
+
+      updateBattleLive((current) => {
+        const nextCombo = anySpark ? Math.min(99, current.combo + 1) : now - lastSparkAt.current > 650 * timingScale ? 0 : current.combo;
+        let healed = false;
+        const nextParty = current.party.map((member) => {
+          if (member.id === unitId) return { ...member, gauge: timeline.burst ? 0 : Math.min(100, member.gauge + timeline.gaugeGainPerHit) };
+          if (heartDrop && !healed && member.hp > 0) {
+            const maxHp = getFormStat(getUnit(member.id), save.unitStars[member.id] ?? 3, save.unitLevels[member.id] ?? 1, "hp");
+            if (member.hp < maxHp) {
+              healed = true;
+              return { ...member, hp: Math.min(maxHp, member.hp + Math.round(maxHp * 0.07)) };
+            }
+          }
+          return member;
+        });
+        const recoveredParty = impact.isFinisherBeat && timeline.healRatio > 0 ? nextParty.map((member) => {
+          const maxHp = getFormStat(getUnit(member.id), save.unitStars[member.id] ?? 3, save.unitLevels[member.id] ?? 1, "hp");
+          return {
+            ...member,
+            hp: Math.min(maxHp, member.hp + Math.round(maxHp * timeline.healRatio)),
+            ailment: timeline.cleanse ? "" : member.ailment,
+          };
+        }) : nextParty;
+        const focusedOutcome = outcomes.find((outcome) => outcome.target.instanceId === current.targetEnemyId);
+        const focusedEnemy = focusedOutcome ? current.enemies.find((enemy) => enemy.instanceId === focusedOutcome.target.instanceId) : null;
+        const focusDefeated = Boolean(focusedOutcome && focusedEnemy && focusedEnemy.hp - focusedOutcome.damage <= 0);
+        return {
+          ...current,
+          combo: nextCombo,
+          enemies: current.enemies.map((member) => {
+            const outcome = outcomes.find((candidate) => candidate.target.instanceId === member.instanceId);
+            return outcome ? { ...member, hp: Math.max(0, member.hp - outcome.damage), ailments: ailment && !member.ailments.includes(ailment) ? [...member.ailments, ailment] : member.ailments } : member;
+          }),
+          party: recoveredParty.map((member) => impact.isFinisherBeat && timeline.burstBuff
+            ? { ...member, buffs: member.buffs.includes(timeline.burstBuff) ? member.buffs : [...member.buffs, timeline.burstBuff] }
+            : member),
+          targetEnemyId: focusDefeated ? "" : current.targetEnemyId,
+          loot: {
+            gold: current.loot.gold + outcomes.reduce((total, outcome) => total + (outcome.killed ? 24 + quest.chapter * 8 : 0), 0),
+            materials: current.loot.materials + outcomes.filter((outcome) => outcome.killed && (outcome.enemy.boss || Math.random() < 0.35)).length,
+            hearts: current.loot.hearts + (heartDrop ? 1 : 0),
+            crystals: current.loot.crystals + (supportBurst ? 0 : outcomes.filter((outcome) => outcome.wasAlive).length),
+          },
+          message: impactFeedback,
+        };
+      });
+
+      setAttackFxs((current) => current.map((fx) => fx.id === timeline.attackId ? { ...fx, stage: "impact" } : fx));
+      const damageEffects: DamageFx[] = supportBurst ? [] : outcomes.map((outcome) => ({
+        id: outcome.fxId,
+        unitId,
+        targetEnemyId: outcome.target.instanceId,
+        damage: outcome.damage,
+        spark: outcome.spark,
+        critical,
+        weakness: outcome.advantage > 1,
+        hit: impact.hitNumber,
+        burst: timeline.burst,
+        frame: impact.attackFrame,
+        finisher: impact.isFinisherBeat,
+      }));
+      const crystalEffects: CrystalFx[] = supportBurst ? [] : outcomes.filter((outcome) => outcome.wasAlive).map((outcome) => ({ id: outcome.fxId, targetEnemyId: outcome.target.instanceId, unitId, kind: outcome.kind }));
+      setDamageFxs((current) => [...current, ...damageEffects]);
+      setCrystalFxs((current) => [...current, ...crystalEffects]);
+      const effectIds = new Set(outcomes.map((outcome) => outcome.fxId));
+      window.setTimeout(() => setDamageFxs((current) => current.filter((fx) => !effectIds.has(fx.id))), getBattleDuration(timeline.numeralLifeMs, battleSpeed));
+      window.setTimeout(() => setCrystalFxs((current) => current.filter((fx) => !effectIds.has(fx.id))), getBattleDuration(timeline.crystalLifeMs, battleSpeed));
+      playSfx(supportBurst ? "burst" : anySpark ? "spark" : outcomes.some((outcome) => outcome.wasAlive && outcome.kind !== "burst") ? "crystal" : "hit");
+      const hitPower = Math.min(
+        3.4,
+        impact.beatWeight
+        * (timeline.burst ? 1.35 : 1)
+        * (impact.isFinisherBeat ? 1.9 : 1)
+        * (critical ? 1.3 : 1)
+        * (anySpark ? 1.22 : 1)
+        * (outcomes.some((outcome) => outcome.killed) ? 1.25 : 1),
+      );
+      setImpactPower(Number((supportBurst ? 0.35 : hitPower).toFixed(2)));
+      if (!supportBurst) setScreenImpact((value) => value + 1);
+
+      await waitForBattle(impact.strikeHoldMs);
+      setAttackFxs((current) => current.map((fx) => fx.id === timeline.attackId ? { ...fx, stage: "hitstop" } : fx));
+      await waitForBattle(impact.hitstopHoldMs);
+      setAttackFxs((current) => current.map((fx) => fx.id === timeline.attackId ? { ...fx, stage: "recover" } : fx));
+      await waitForBattle(impact.recoverHoldMs);
+      if (anySpark || critical || impact.isFinisherBeat) await waitForBattle(impact.extraHoldMs);
+      await waitForBattle(impact.cadenceHoldMs);
+    }
+
+    for (const node of timeline.burstRecovery) {
+      setAttackFxs((current) => current.map((fx) => fx.id === timeline.attackId ? { ...fx, ...node.patch } : fx));
+      await waitForBattle(node.holdMs);
+    }
+    const resolved = battleRef.current;
+    if (resolved) updateBattleLive((state) => ({ ...state, message: timeline.completeMessage }));
+    setAttackFxs((current) => current.map((fx) => fx.id === timeline.attackId ? { ...fx, ...timeline.returnNode.patch } : fx));
+    await waitForBattle(timeline.returnNode.holdMs);
+    setAttackFxs((current) => current.filter((fx) => fx.id !== timeline.attackId));
+    activeAttackIds.current.delete(unitId);
+    await advanceModernBattle();
+  };
+
   const queueAttack = async (unitId: string, wantsBurst = false, fromAuto = false) => {
     const opening = battleRef.current;
     if (!opening || victory || enemyTurnLock.current || battleFlowLock.current || (autoTurnLock.current && !fromAuto)) return;
@@ -2746,6 +2896,26 @@ export default function GatesOfAzura() {
     const heroIndex = Math.max(0, opening.party.findIndex((member) => member.id === unitId));
     const openingTargetIndex = Math.max(0, opening.enemies.findIndex((enemy) => enemy.instanceId === firstTarget.instanceId));
     const contactAnchor = getContactOffset(opening.enemies.length, openingTargetIndex, heroIndex, battlefieldWidth);
+    if (NEW_TIMELINE_UNITS.has(unit.id)) {
+      const attackPower = getFormStat(unit, stars, save.unitLevels[unitId] ?? 1, "atk");
+      const timeline = buildActionTimeline({
+        unitId: unit.id,
+        unitName: unit.name,
+        stars,
+        burst,
+        attackId,
+        combatProfile,
+        battleSprites,
+        normalAttackChain,
+        attackScope,
+        lockedTargetIds,
+        attackPower,
+        burstLevelBonus: (save.burstLevels[unitId] ?? 1) * 0.08,
+        contactAnchor,
+      });
+      await playActionTimeline(timeline, quest);
+      return;
+    }
     activeAttackIds.current.add(unitId);
     updateBattleLive((state) => ({
       ...state,
