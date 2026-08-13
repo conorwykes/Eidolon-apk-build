@@ -782,8 +782,6 @@ rotation{--burst-origin-x:43%;--burst-origin-y:55%;--burst-rotation:0deg;--burst
   transform:translate(0,0) scale(1)!important;
 }
 .field-unit.active.attack-stage-approach .battle-unit-sprite{animation:groundFootwork calc(.07s * var(--battle-time-scale)) steps(2,end) infinite!important}
-.field-unit.active.attack-stage-approach .field-unit-shadow{animation:groundShadowRun calc(.07s * var(--battle-time-scale)) steps(2,end) infinite!important}
-.field-unit.active.attack-stage-windup .field-unit-shadow,.field-unit.active.attack-stage-impact .field-unit-shadow{opacity:.9;transform:scaleX(1.28)}
 .battle-items .auto-button.running{border-color:#78e9dd;background:linear-gradient(110deg,#174440,#102a31);box-shadow:inset 0 0 12px #5de4d42e,0 0 10px #55dfcf44}
 .battle-items .auto-button.running svg{animation:autoTurnPulse .7s ease-in-out infinite alternate}
 
@@ -797,7 +795,6 @@ rotation{--burst-origin-x:43%;--burst-origin-y:55%;--burst-rotation:0deg;--burst
   100%{transform:translate(0,0) scale(1)}
 }
 @keyframes groundFootwork{0%,100%{transform:translateY(0) rotate(-.45deg)}50%{transform:translateY(-1.5px) rotate(.45deg)}}
-@keyframes groundShadowRun{0%,100%{opacity:.9;transform:scaleX(1.28)}50%{opacity:.72;transform:scaleX(1.08)}}
 @keyframes autoTurnPulse{to{color:#d7fff9;filter:drop-shadow(0 0 6px #6df5e6)}}
 
 /* Mobile Home is a single viewport composition. The destination absorbs the
@@ -1017,26 +1014,22 @@ emblem{
 .field-unit.active:not(.attack-stage-approach) .battle-unit-sprite{
   transform:none!important;
 }
-.field-unit.active:not(.attack-stage-approach) .field-unit-shadow{
-  opacity:.9!important;
-  /* The character reaches --contact-y in full to visually connect with a
-     target standing at a different formation height/depth, but a shadow
-     that rode along for the whole distance reads as "floating in the sky"
-     rather than a grounded strike or an intentional jump. Countering most
-     of that vertical travel keeps the shadow near the unit's own ground
-     spot; only ~18% of the reach still nudges it, so it still settles
-     under wherever the unit actually lands once the attack ends.
-     (Tried giving the shadow its own per-unit correction to match the
-     attack-stage sprite `bottom` offset below, on the theory that the two
-     needed to move by the same delta. Measured live and it made the gap
-     worse, not better: the sprite loses its own transform entirely during
-     this state — `transform:none!important` two rules up — and inherits
-     only the parent's translate/scale, while the shadow keeps both the
-     parent's transform *and* this layered one on top. The two elements
-     compose differently, so "same delta" was the wrong model. The sprite's
-     `bottom` fix alone already lands within a few px of the idle gap;
-     leave this formula as designed rather than re-guess it.) */
-  transform:translateY(calc(var(--contact-y) * -0.82)) scaleX(1.24)!important;
+/* Every attempt to keep the shadow anchored to the ground while the unit's
+   own contact-anchored lunge carries it toward a target at a different
+   formation height/depth ended up wrong somewhere: countering most of the
+   vertical travel by a fixed ratio left it floating for large lunges (a
+   low-slotted enemy); syncing it to the parent's own return-to-home
+   animation fixed that one stage but a visible dark patch above the
+   character's head during the attack itself turned out to still be this
+   shadow, not the earlier suspects (the container's own drop-shadow filter,
+   baked-in sprite art — both ruled out live). The shadow's silhouette
+   reads fine planted under an idle character but has no correct position to
+   interpolate to while the character itself is airborne mid-lunge at an
+   arbitrary contact point. Simplest correct fix: it isn't meant to be seen
+   while the unit is off its mark, so don't render it then. It reappears the
+   instant `.active` drops away and the idle rules below take back over. */
+.field-unit.active .field-unit-shadow{
+  display:none!important;
 }
 .field-unit.active:not(.attack-stage-approach) .field-unit-aura{
   opacity:.34!important;
