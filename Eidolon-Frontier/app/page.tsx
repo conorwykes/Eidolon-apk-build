@@ -913,12 +913,6 @@ const ZEPHYRA_RANGED_ADVANCE = 0;
 // Ranged units hold their ground; melee units still travel to contact.
 const RANGED_NORMAL_UNITS = new Set<BattleUnitId>(["zephyra", "solenne"]);
 
-// Migration gate for the new data-driven ActionTimeline (game/attack-timeline.ts).
-// Units listed here run through buildActionTimeline + playActionTimeline instead
-// of the old per-hit imperative loop in queueAttack. Expanded unit-by-unit while
-// each addition is verified live; the old loop is deleted once every unit is here.
-const NEW_TIMELINE_UNITS = new Set<BattleUnitId>(["kael", "nyx", "zephyra", "solenne", "lyra", "brannock"]);
-
 const normalisedChainCache = new Map<string, readonly NormalAttackBeat[]>();
 
 function normaliseChain(cacheKey: string, chain: readonly NormalAttackBeat[]): readonly NormalAttackBeat[] {
@@ -2683,9 +2677,7 @@ export default function GatesOfAzura() {
 
   // Generic executor for a pre-built ActionTimeline: the one place that owns
   // an attack's full lifecycle (approach, per-beat pose playback, live
-  // damage/loot resolution, wrap-up, UI unlock). Not wired into queueAttack
-  // yet — Phase 0 lands this alongside the existing per-unit loop as dead
-  // code until its output has been verified against it beat-for-beat.
+  // damage/loot resolution, wrap-up, UI unlock) for every unit.
   const playActionTimeline = async (timeline: ActionTimeline, quest: Quest) => {
     const unitId = timeline.unitId;
     const unit = getUnit(unitId);
@@ -2889,372 +2881,27 @@ export default function GatesOfAzura() {
     if (!firstTarget) return;
     const lockedTargetIds = openingTargets.map((target) => target.instanceId);
     const normalAttackChain = getNormalAttackChain(unit, stars);
-    const rapidNormalChain = !burst;
-    const hits = burst ? combatProfile.burstHits : normalAttackChain.length;
-    const animationSteps = hits;
     const attackId = `${unitId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const heroIndex = Math.max(0, opening.party.findIndex((member) => member.id === unitId));
     const openingTargetIndex = Math.max(0, opening.enemies.findIndex((enemy) => enemy.instanceId === firstTarget.instanceId));
     const contactAnchor = getContactOffset(opening.enemies.length, openingTargetIndex, heroIndex, battlefieldWidth);
-    if (NEW_TIMELINE_UNITS.has(unit.id)) {
-      const attackPower = getFormStat(unit, stars, save.unitLevels[unitId] ?? 1, "atk");
-      const timeline = buildActionTimeline({
-        unitId: unit.id,
-        unitName: unit.name,
-        stars,
-        burst,
-        attackId,
-        combatProfile,
-        battleSprites,
-        normalAttackChain,
-        attackScope,
-        lockedTargetIds,
-        attackPower,
-        burstLevelBonus: (save.burstLevels[unitId] ?? 1) * 0.08,
-        contactAnchor,
-      });
-      await playActionTimeline(timeline, quest);
-      return;
-    }
-    activeAttackIds.current.add(unitId);
-    updateBattleLive((state) => ({
-      ...state,
-      party: state.party.map((member) => member.id === unitId ? { ...member, acted: true, guarding: false, gauge: burst ? 0 : member.gauge } : member),
-      message: burst
-        ? `${combatProfile.burstName}!${combatProfile.burstDoesDamage ? attackScope === "all" ? " All enemies caught in range." : state.targetEnemyId ? " Focus locked." : " Upper-foe priority." : " Restorative light spreads across the squad."}`
-        : unit.id === "solenne"
-          ? `${unit.name} invokes judgement above ${state.targetEnemyId ? "the focused target" : "the upper-priority target"}.`
-          : unit.id === "zephyra"
-            ? `${unit.name} draws on ${state.targetEnemyId ? "the focused target" : "the upper-priority target"}.`
-            : `${unit.name} rushes ${state.targetEnemyId ? "the focused target" : "the upper-priority target"}.`,
-    }));
-    setAttackFxs((current) => [...current, {
-      id: attackId,
-      unitId: unit.id,
-      targetEnemyId: firstTarget.instanceId,
-      scope: attackScope,
-      phase: burst ? "burst-intro" : "attack",
-      stage: "approach",
-      frame: burst || unit.id === "zephyra" || unit.id === "solenne" ? 0 : normalAttackChain[0]?.frame ?? 0,
-      volley: 0,
-      hits,
-      label: burst ? combatProfile.burstName : combatProfile.attackName,
-      contactX: contactAnchor.x,
-      contactY: contactAnchor.y,
-    }]);
-    playSfx(burst ? "burst" : "tap");
-    if (burst) {
-      // Keep the named character intro, then hand straight to the authored
-      // sprite anticipation. The old battlefield VFX and Kael video remain
-      // removed and do not play underneath it.
-      await waitForBattle(760);
-      setAttackFxs((current) => current.map((fx) => fx.id === attackId ? { ...fx, phase: "burst", stage: "approach" } : fx));
-      playSfx("burst");
-      await waitForBattle(90);
-    } else {
-      // Matches the approach-stage CSS animation duration (globals.css,
-      // attack-stage-approach) so the JS phase change and the visible travel
-      // finish together instead of one cutting the other off.
-      await waitForBattle(320);
-    }
-
     const attackPower = getFormStat(unit, stars, save.unitLevels[unitId] ?? 1, "atk");
-    const totalBase = attackPower * (burst ? combatProfile.burstMultiplier + (save.burstLevels[unitId] ?? 1) * 0.08 : combatProfile.attackMultiplier);
-    for (const step of Array.from({ length: animationSteps }, (_, index) => index)) {
-      const state = battleRef.current;
-      if (!state) break;
-      // A move owns the targets it selected at launch. In particular, a
-      // single-target chain never hops to a second enemy after a lethal hit;
-      // the original target remains present for every overkill pose and impact.
-      const targets = state.enemies.filter((enemy) => lockedTargetIds.includes(enemy.instanceId));
-      const primaryTarget = targets[0];
-      if (!primaryTarget) break;
-      const visualTargetId = primaryTarget.instanceId;
-      const normalBeat = normalAttackChain[Math.min(step, normalAttackChain.length - 1)];
-      const previousNormalBeat = step > 0 ? normalAttackChain[Math.min(step - 1, normalAttackChain.length - 1)] : null;
-      const nextNormalBeat = step < animationSteps - 1 ? normalAttackChain[Math.min(step + 1, normalAttackChain.length - 1)] : null;
-      const startsNormalPose = !burst && (!previousNormalBeat || previousNormalBeat.pose !== normalBeat.pose);
-      const endsNormalPose = !burst && (!nextNormalBeat || nextNormalBeat.pose !== normalBeat.pose);
-      // A Burst now owns a complete rarity-scaled timeline instead of using
-      // four attack-like drawings as a hit counter. The opening anticipation
-      // frames play before the first damage packet, the middle action frames
-      // advance across every hit, and the final anchored recovery plays after
-      // the last packet. This keeps damage unchanged while giving higher forms
-      // more genuine animation.
-      const burstOpeningFrames = Math.max(1, Math.round(battleSprites.burst.length * 0.18));
-      const burstRecoveryFrames = Math.max(2, Math.round(battleSprites.burst.length * 0.18));
-      const burstActionStart = burstOpeningFrames;
-      const burstActionEnd = Math.max(burstActionStart, battleSprites.burst.length - burstRecoveryFrames - 1);
-      const burstActionSpan = Math.max(1, burstActionEnd - burstActionStart + 1);
-      const previousBurstFrame = step > 0
-        ? Math.min(
-            burstActionEnd,
-            burstActionStart + Math.floor((step - 1) * Math.max(1, burstActionEnd - burstActionStart) / Math.max(1, animationSteps - 1)),
-          )
-        : burstActionStart - 1;
-      const attackFrame = burst
-        ? Math.min(
-            burstActionEnd,
-            burstActionStart + Math.floor(step * Math.max(1, burstActionEnd - burstActionStart) / Math.max(1, animationSteps - 1)),
-          )
-        : normalBeat.frame;
-      // Every authored unit now opens each damage packet with its own drawn
-      // wind-up. Zephyra plays a full bow draw, Solenne a planted invocation,
-      // and the melee units their own lunge, turning step, shouldered heave or
-      // blink. One table drives all of them.
-      const castSequence = !burst && startsNormalPose ? getNormalCastSequence(unit.id, stars) : undefined;
-      if (burst && step === 0) {
-        for (const frame of Array.from({ length: burstOpeningFrames }, (_, index) => index)) {
-          setAttackFxs((current) => current.map((fx) => fx.id === attackId ? {
-            ...fx,
-            frame,
-            volley: 0,
-            targetEnemyId: visualTargetId,
-            stage: frame === 0 ? "windup" : "release",
-          } : fx));
-          await waitForBattle(frame === 0 ? 88 : 64);
-        }
-      }
-      if (burst) {
-        // When a form owns more drawings than damage packets, show every
-        // intermediate action pose before the next packet rather than skipping
-        // directly to the contact drawing. The highest rarities therefore gain
-        // visible motion, not merely a larger asset list.
-        const burstActionFrameStart = Math.max(burstActionStart, previousBurstFrame + 1);
-        for (const frame of Array.from({ length: Math.max(0, attackFrame - burstActionFrameStart) }, (_, index) => burstActionFrameStart + index)) {
-          setAttackFxs((current) => current.map((fx) => fx.id === attackId ? {
-            ...fx,
-            frame,
-            volley: step,
-            targetEnemyId: visualTargetId,
-            stage: frame < burstActionStart + burstActionSpan / 2 ? "release" : "flight",
-          } : fx));
-          await waitForBattle(46);
-        }
-      }
-      if (castSequence) {
-        for (const drawing of castSequence) {
-          setAttackFxs((current) => current.map((fx) => fx.id === attackId ? {
-            ...fx,
-            frame: drawing.frame,
-            volley: normalBeat.pose,
-            targetEnemyId: visualTargetId,
-            stage: drawing.stage,
-          } : fx));
-          await waitForBattle(drawing.hold);
-        }
-        // The wind-up owns the frames leading up to contact; the beat itself
-        // owns the frame that connects. Ranged draws already end on their
-        // contact frame, so this only moves the melee phrases into place.
-        if (castSequence[castSequence.length - 1]?.frame !== attackFrame) {
-          setAttackFxs((current) => current.map((fx) => fx.id === attackId ? {
-            ...fx,
-            frame: attackFrame,
-            volley: normalBeat.pose,
-            targetEnemyId: visualTargetId,
-            stage: "impact",
-          } : fx));
-          await waitForBattle(12);
-        }
-      } else {
-        setAttackFxs((current) => current.map((fx) => fx.id === attackId ? {
-          ...fx,
-          frame: attackFrame,
-          volley: burst ? step : normalBeat.pose,
-          targetEnemyId: visualTargetId,
-          stage: startsNormalPose || burst ? "windup" : "impact",
-        } : fx));
-        await waitForBattle(burst ? 55 : rapidNormalChain ? startsNormalPose ? 42 : 10 : 65);
-      }
-      // Zephyra's Burst is one piercing volley: the arrow keeps flying
-      // through every authored pose and only lands as a single full-force
-      // hit per foe on the final frame, instead of splitting damage across
-      // each intermediate pose the way every other unit's combo does.
-      const isZephyraBurstVolley = burst && unit.id === "zephyra";
-      const landsThisStep = !isZephyraBurstVolley || step === animationSteps - 1;
-      const supportBurst = burst && !combatProfile.burstDoesDamage;
-      const sparkTargets = supportBurst ? new Set<string>() : await resolveSparkFrame(unitId, targets.map((target) => target.instanceId));
-      const critical = !supportBurst && Math.random() < CRITICAL_CHANCE;
-      const now = performance.now();
-      const timingScale = getBattleTimeScale(battleSpeed);
-      const heartDrop = !supportBurst && primaryTarget.hp > 0 && step % 4 === 3 && state.party.some((member) => member.hp > 0 && member.hp < getFormStat(getUnit(member.id), save.unitStars[member.id] ?? 3, save.unitLevels[member.id] ?? 1, "hp"));
-      const anySpark = sparkTargets.size > 0;
-      const ailment = burst && unit.id === "kael" ? "Burn" : anySpark && unit.id === "zephyra" ? "Shock" : critical && unit.id === "nyx" ? "Def Down" : "";
-      const outcomes = targets.map((target, targetIndex) => {
-        const enemy = getEnemy(target.enemyId);
-        const advantage = ELEMENTS[unit.element].strong === enemy.element ? 1.45 : ELEMENTS[enemy.element].strong === unit.element ? 0.78 : 1;
-        const variance = 0.93 + Math.random() * 0.14;
-        const spark = sparkTargets.has(target.instanceId);
-        const wasAlive = target.hp > 0;
-        const hitMultiplier = burst ? (isZephyraBurstVolley ? 1 : 1 / animationSteps) : normalBeat.multiplier;
-        const damage = burst && !combatProfile.burstDoesDamage
-          ? 0
-          : Math.max(1, Math.round(totalBase * hitMultiplier * advantage * variance * (critical ? CRITICAL_DAMAGE_MULTIPLIER : 1) * (spark ? SPARK_DAMAGE_MULTIPLIER : 1)));
-        const killed = wasAlive && target.hp - damage <= 0;
-        const kind: CrystalKind = killed ? (enemy.boss ? "material" : "gold") : heartDrop && targetIndex === 0 ? "heart" : "burst";
-        return { target, enemy, advantage, damage, killed, kind, spark, wasAlive, fxId: `${attackId}-hit-${step}-${target.instanceId}` };
-      });
-
-      if (!landsThisStep) {
-        setAttackFxs((current) => current.map((fx) => fx.id === attackId ? { ...fx, stage: "release" } : fx));
-        await waitForBattle(burst ? 18 : rapidNormalChain ? 12 : 22);
-        continue;
-      }
-
-      if (anySpark) lastSparkAt.current = now;
-
-      const impactFeedback = supportBurst
-        ? `${unit.name} · ${combatProfile.burstName} · HEALING LIGHT`
-        : [
-            unit.name,
-            attackScope === "all" ? "ALL-FOE" : "",
-            anySpark ? "AETHER SPARK +25%" : "",
-            critical ? "CRITICAL +50%" : "",
-            !anySpark && !critical && outcomes.some((outcome) => outcome.advantage > 1) ? "WEAKNESS!" : "",
-          ].filter(Boolean).join(" · ");
-
-      updateBattleLive((current) => {
-        const nextCombo = anySpark ? Math.min(99, current.combo + 1) : now - lastSparkAt.current > 650 * timingScale ? 0 : current.combo;
-        let healed = false;
-        const nextParty = current.party.map((member) => {
-          if (member.id === unitId) return { ...member, gauge: burst ? 0 : Math.min(100, member.gauge + Math.ceil(combatProfile.gaugeGain / animationSteps)) };
-          if (heartDrop && !healed && member.hp > 0) {
-            const maxHp = getFormStat(getUnit(member.id), save.unitStars[member.id] ?? 3, save.unitLevels[member.id] ?? 1, "hp");
-            if (member.hp < maxHp) {
-              healed = true;
-              return { ...member, hp: Math.min(maxHp, member.hp + Math.round(maxHp * 0.07)) };
-            }
-          }
-          return member;
-        });
-        const recoveredParty = burst && step === animationSteps - 1 && combatProfile.healRatio > 0 ? nextParty.map((member) => {
-          const maxHp = getFormStat(getUnit(member.id), save.unitStars[member.id] ?? 3, save.unitLevels[member.id] ?? 1, "hp");
-          return {
-            ...member,
-            hp: Math.min(maxHp, member.hp + Math.round(maxHp * combatProfile.healRatio)),
-            ailment: combatProfile.cleanse ? "" : member.ailment,
-          };
-        }) : nextParty;
-        const focusedOutcome = outcomes.find((outcome) => outcome.target.instanceId === current.targetEnemyId);
-        const focusedEnemy = focusedOutcome ? current.enemies.find((enemy) => enemy.instanceId === focusedOutcome.target.instanceId) : null;
-        const focusDefeated = Boolean(focusedOutcome && focusedEnemy && focusedEnemy.hp - focusedOutcome.damage <= 0);
-        return {
-          ...current,
-          combo: nextCombo,
-          enemies: current.enemies.map((member) => {
-            const outcome = outcomes.find((candidate) => candidate.target.instanceId === member.instanceId);
-            return outcome ? { ...member, hp: Math.max(0, member.hp - outcome.damage), ailments: ailment && !member.ailments.includes(ailment) ? [...member.ailments, ailment] : member.ailments } : member;
-          }),
-          party: recoveredParty.map((member) => burst && step === animationSteps - 1 && combatProfile.burstBuff
-            ? { ...member, buffs: member.buffs.includes(combatProfile.burstBuff) ? member.buffs : [...member.buffs, combatProfile.burstBuff] }
-            : member),
-          targetEnemyId: focusDefeated ? "" : current.targetEnemyId,
-          loot: {
-            gold: current.loot.gold + outcomes.reduce((total, outcome) => total + (outcome.killed ? 24 + quest.chapter * 8 : 0), 0),
-            materials: current.loot.materials + outcomes.filter((outcome) => outcome.killed && (outcome.enemy.boss || Math.random() < 0.35)).length,
-            hearts: current.loot.hearts + (heartDrop ? 1 : 0),
-            crystals: current.loot.crystals + (supportBurst ? 0 : outcomes.filter((outcome) => outcome.wasAlive).length),
-          },
-          message: impactFeedback,
-        };
-      });
-
-      setAttackFxs((current) => current.map((fx) => fx.id === attackId ? { ...fx, stage: "impact" } : fx));
-      const damageEffects: DamageFx[] = supportBurst ? [] : outcomes.map((outcome) => ({
-        id: outcome.fxId,
-        unitId: unit.id,
-        targetEnemyId: outcome.target.instanceId,
-        damage: outcome.damage,
-        spark: outcome.spark,
-        critical,
-        weakness: outcome.advantage > 1,
-        hit: burst ? step + 1 : attackFrame + 1,
-        burst,
-        frame: attackFrame,
-        finisher: burst && step === animationSteps - 1,
-      }));
-      const crystalEffects: CrystalFx[] = supportBurst ? [] : outcomes.filter((outcome) => outcome.wasAlive).map((outcome) => ({ id: outcome.fxId, targetEnemyId: outcome.target.instanceId, unitId, kind: outcome.kind }));
-      setDamageFxs((current) => [...current, ...damageEffects]);
-      setCrystalFxs((current) => [...current, ...crystalEffects]);
-      const effectIds = new Set(outcomes.map((outcome) => outcome.fxId));
-      // Slow authored chains (Brannock) must not have their numerals culled
-      // before the next beat even lands; dense ones (Nyx) must not stack into
-      // an unreadable pile.
-      const numeralLife = rapidNormalChain ? (normalAttackChain.length <= 4 ? 470 : normalAttackChain.length >= 8 ? 300 : 380) : 450;
-      window.setTimeout(() => setDamageFxs((current) => current.filter((fx) => !effectIds.has(fx.id))), getBattleDuration(numeralLife, battleSpeed));
-      window.setTimeout(() => setCrystalFxs((current) => current.filter((fx) => !effectIds.has(fx.id))), getBattleDuration(500, battleSpeed));
-      playSfx(supportBurst ? "burst" : anySpark ? "spark" : outcomes.some((outcome) => outcome.wasAlive && outcome.kind !== "burst") ? "crystal" : "hit");
-      // Weight the camera by what actually happened rather than shaking the
-      // same amount for every beat. A heavy authored beat (Brannock's crush,
-      // Kael's downswing) already carries a larger multiplier, so the chain's
-      // own shape feeds the camera for free.
-      const finisherBeat = burst && step === animationSteps - 1;
-      const beatWeight = burst ? 1 : Math.min(2.2, normalBeat.multiplier * normalAttackChain.length);
-      const hitPower = Math.min(
-        3.4,
-        beatWeight
-        * (burst ? 1.35 : 1)
-        * (finisherBeat ? 1.9 : 1)
-        * (critical ? 1.3 : 1)
-        * (anySpark ? 1.22 : 1)
-        * (outcomes.some((outcome) => outcome.killed) ? 1.25 : 1),
-      );
-      setImpactPower(Number((supportBurst ? 0.35 : hitPower).toFixed(2)));
-      if (!supportBurst) setScreenImpact((value) => value + 1);
-
-      // A hit is a small authored sequence rather than an immediate frame swap:
-      // connect, freeze on the damage pose, then recoil before the next drawing.
-      await waitForBattle(burst ? 18 : rapidNormalChain ? 12 : 22);
-      setAttackFxs((current) => current.map((fx) => fx.id === attackId ? { ...fx, stage: "hitstop" } : fx));
-      await waitForBattle(burst ? 48 : rapidNormalChain ? 26 : 55);
-      setAttackFxs((current) => current.map((fx) => fx.id === attackId ? { ...fx, stage: "recover" } : fx));
-      await waitForBattle(burst ? 32 : rapidNormalChain ? 16 : 38);
-      if (anySpark || critical || (burst && step === animationSteps - 1)) await waitForBattle(34);
-      // Leave the completed contact drawing on screen before the next pose is
-      // loaded. Follow-up ticks inside one pose are deliberately much tighter;
-      // the larger gap appears only between the two authored strike drawings.
-      // The reference project's authored attack clips hold their opening
-      // anticipation frame and closing impact frame for two to three times as
-      // long as the brief transition frames between them, rather than an
-      // even beat-to-beat cadence throughout. The shared chain's own tick
-      // pacing already reads well for the transition hits, so only the very
-      // first hit (anticipation) and the finisher (impact) get the extra
-      // hold — the middle of a long combo stays snappy.
-      const isAnticipationBeat = rapidNormalChain && !burst && step === 0;
-      const isImpactBeat = rapidNormalChain && !burst && step === animationSteps - 1;
-      const holdWeight = isAnticipationBeat || isImpactBeat ? 1.7 : 1;
-      await waitForBattle(
-        (burst
-          ? 30
-          : rapidNormalChain
-            ? endsNormalPose && step < animationSteps - 1
-              ? getNormalCadence(unit.id, stars).phrase
-              : getNormalCadence(unit.id, stars).tick
-            : 92) * holdWeight,
-      );
-    }
-
-    if (burst) {
-      const recoveryStart = Math.max(0, battleSprites.burst.length - Math.max(2, Math.round(battleSprites.burst.length * 0.18)));
-      for (const frame of Array.from({ length: Math.max(0, battleSprites.burst.length - recoveryStart) }, (_, index) => recoveryStart + index)) {
-        setAttackFxs((current) => current.map((fx) => fx.id === attackId ? {
-          ...fx,
-          frame,
-          stage: frame === battleSprites.burst.length - 1 ? "anchored" : "recover",
-        } : fx));
-        await waitForBattle(frame === battleSprites.burst.length - 1 ? 120 : 54);
-      }
-    }
-    const resolved = battleRef.current;
-    if (resolved) updateBattleLive((state) => ({ ...state, message: `${unit.name} completes ${burst ? combatProfile.burstName : combatProfile.attackName}. Tap another unit—overlap attacks to Spark.` }));
-    setAttackFxs((current) => current.map((fx) => fx.id === attackId ? { ...fx, stage: "return" } : fx));
-    // Equal weight to the approach travel (see attack-stage-return in
-    // globals.css) — going to the target and coming back read as the same
-    // deliberate motion instead of a slow approach and a rushed snap home.
-    await waitForBattle(320);
-    setAttackFxs((current) => current.filter((fx) => fx.id !== attackId));
-    activeAttackIds.current.delete(unitId);
-    await advanceModernBattle();
+    const timeline = buildActionTimeline({
+      unitId: unit.id,
+      unitName: unit.name,
+      stars,
+      burst,
+      attackId,
+      combatProfile,
+      battleSprites,
+      normalAttackChain,
+      attackScope,
+      lockedTargetIds,
+      attackPower,
+      burstLevelBonus: (save.burstLevels[unitId] ?? 1) * 0.08,
+      contactAnchor,
+    });
+    await playActionTimeline(timeline, quest);
   };
 
   const queueAutoTurn = async () => {
