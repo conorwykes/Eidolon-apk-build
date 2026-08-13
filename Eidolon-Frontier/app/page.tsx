@@ -917,7 +917,7 @@ const RANGED_NORMAL_UNITS = new Set<BattleUnitId>(["zephyra", "solenne"]);
 // Units listed here run through buildActionTimeline + playActionTimeline instead
 // of the old per-hit imperative loop in queueAttack. Expanded unit-by-unit while
 // each addition is verified live; the old loop is deleted once every unit is here.
-const NEW_TIMELINE_UNITS = new Set<BattleUnitId>(["kael", "nyx", "zephyra", "solenne", "lyra"]);
+const NEW_TIMELINE_UNITS = new Set<BattleUnitId>(["kael", "nyx", "zephyra", "solenne", "lyra", "brannock"]);
 
 const normalisedChainCache = new Map<string, readonly NormalAttackBeat[]>();
 
