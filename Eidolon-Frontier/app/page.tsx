@@ -3043,14 +3043,24 @@ export default function GatesOfAzura() {
       // Leave the completed contact drawing on screen before the next pose is
       // loaded. Follow-up ticks inside one pose are deliberately much tighter;
       // the larger gap appears only between the two authored strike drawings.
+      // The reference project's authored attack clips hold their opening
+      // anticipation frame and closing impact frame for two to three times as
+      // long as the brief transition frames between them, rather than an
+      // even beat-to-beat cadence throughout. The shared chain's own tick
+      // pacing already reads well for the transition hits, so only the very
+      // first hit (anticipation) and the finisher (impact) get the extra
+      // hold — the middle of a long combo stays snappy.
+      const isAnticipationBeat = rapidNormalChain && !burst && step === 0;
+      const isImpactBeat = rapidNormalChain && !burst && step === animationSteps - 1;
+      const holdWeight = isAnticipationBeat || isImpactBeat ? 1.7 : 1;
       await waitForBattle(
-        burst
+        (burst
           ? 30
           : rapidNormalChain
             ? endsNormalPose && step < animationSteps - 1
               ? getNormalCadence(unit.id, stars).phrase
               : getNormalCadence(unit.id, stars).tick
-            : 92,
+            : 92) * holdWeight,
       );
     }
 
