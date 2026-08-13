@@ -1535,28 +1535,18 @@ function UnitKeyArt({ unit, stars = 5, className = "" }: { unit: Unit; stars?: S
 }
 
 function StableBattleFrame({ src, className }: { src: string; className: string }) {
-  const [displayedSrc, setDisplayedSrc] = useState(src);
-
-  useEffect(() => {
-    if (src === displayedSrc) return;
-    let cancelled = false;
-    const nextFrame = new Image();
-    nextFrame.src = src;
-    const commit = () => {
-      if (!cancelled) setDisplayedSrc(src);
-    };
-    if (nextFrame.complete) {
-      void nextFrame.decode().catch(() => undefined).then(commit);
-    } else {
-      nextFrame.onload = () => void nextFrame.decode().catch(() => undefined).then(commit);
-    }
-    return () => {
-      cancelled = true;
-      nextFrame.onload = null;
-    };
-  }, [displayedSrc, src]);
-
-  return <img className={className} src={displayedSrc} alt="" draggable={false} data-frame-ready="true" />;
+  // Previously this waited for each new frame to fully load+decode before
+  // swapping (to avoid a flash of a blank/broken image). But combo hits can
+  // advance faster than one frame's real decode latency on slower devices —
+  // the Android WebView's asset bridge in particular is much slower than a
+  // desktop dev server — and every frame whose decode hadn't finished before
+  // the next hit's src change got silently abandoned, never once painted.
+  // That reads as skipped attack frames and, when a stale bitmap lingers on
+  // the compositor while the next one lands, as ghosting. The sibling
+  // preload effect in BattleUnitSprite already warms every frame's decode
+  // before combat can reach it, so binding src directly is both simpler and
+  // safe: no waiting, no race, no dropped frames.
+  return <img className={className} src={src} alt="" draggable={false} data-frame-ready="true" />;
 }
 
 /* Procedural attack and Burst VFX are intentionally absent. Burst presentation
