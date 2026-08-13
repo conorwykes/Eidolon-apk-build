@@ -739,7 +739,7 @@ rotation{--burst-origin-x:43%;--burst-origin-y:55%;--burst-rotation:0deg;--burst
 .field-unit.active.attack-stage-windup{transform:translate(calc(var(--contact-x) + 5px),calc(var(--contact-y) - 2px)) scale(1.06)!important}
 .field-unit.active.attack-stage-impact{transform:translate(calc(var(--contact-x) - 7px),calc(var(--contact-y) + 1px)) scale(1.14)!important;transition-duration:calc(.075s * var(--battle-time-scale))!important}
 .field-unit.active.bursting.attack-stage-impact{transform:translate(calc(var(--contact-x) - 10px),var(--contact-y)) scale(1.22)!important}
-.field-unit.active.attack-stage-return{transform:translate(0,0) scale(1)!important;transition-duration:calc(.14s * var(--battle-time-scale))!important;filter:drop-shadow(0 9px 5px #0009)!important}
+.field-unit.active.attack-stage-return{transform:translate(0,0) scale(1)!important;transition-duration:calc(.32s * var(--battle-time-scale))!important;filter:drop-shadow(0 9px 5px #0009)!important}
 .field-unit.active .battle-unit-sprite,.field-unit.active.bursting .battle-unit-sprite{animation:none!important;transition:transform calc(.08s * var(--battle-time-scale)) ease-out}
 .field-unit.active.attack-stage-windup .battle-unit-sprite{transform:translate(var(--strike-x),var(--strike-y)) rotate(var(--strike-rotate)) scale(.97)}
 .field-unit.active.attack-stage-impact .battle-unit-sprite{transform:translateX(-4px) rotate(-.6deg) scale(1.045)}
@@ -770,15 +770,24 @@ rotation{--burst-origin-x:43%;--burst-origin-y:55%;--burst-rotation:0deg;--burst
 .field-unit-shadow{left:15%;right:15%;bottom:1px;height:10px;background:#000d;filter:blur(3px);transform:scaleX(1.16)}
 .field-unit-aura{left:19%;right:19%;bottom:6px;height:29px;opacity:.34;box-shadow:0 0 9px #55dfd444}
 .field-unit.active{animation:none!important;transform-origin:center bottom;will-change:transform}
+/* Brave Frontier's own reference implementation moves the whole unit with a
+   literal position tween to the enemy's exact spot before any attack pose
+   plays, and tweens back home afterward with the identical duration — travel
+   there and back are given equal, deliberate weight rather than a quick snap
+   out and a rushed snap back. GoA's approach/return used to be asymmetric
+   (approach slower than return) and both quite short; brought them to equal
+   duration and lengthened them to read as real travel while staying inside
+   this project's faster overall combat pace rather than importing the
+   reference's literal (much longer) seconds. */
 .field-unit.active.attack-stage-approach{
-  animation:groundApproach calc(.18s * var(--battle-time-scale)) cubic-bezier(.16,.82,.2,1) both!important;
+  animation:groundApproach calc(.32s * var(--battle-time-scale)) cubic-bezier(.16,.82,.2,1) both!important;
   transform:translate(var(--contact-x),var(--contact-y)) scale(1.025)!important;
 }
 .field-unit.active.attack-stage-windup{transform:translate(calc(var(--contact-x) + 4px),calc(var(--contact-y) - 1px)) scale(1.035)!important}
 .field-unit.active.attack-stage-impact{transform:translate(calc(var(--contact-x) - 6px),calc(var(--contact-y) + 1px)) scale(1.08)!important}
 .field-unit.active.bursting.attack-stage-impact{transform:translate(calc(var(--contact-x) - 9px),var(--contact-y)) scale(1.14)!important}
 .field-unit.active.attack-stage-return{
-  animation:groundReturn calc(.14s * var(--battle-time-scale)) cubic-bezier(.42,0,.4,1) both!important;
+  animation:groundReturn calc(.32s * var(--battle-time-scale)) cubic-bezier(.42,0,.4,1) both!important;
   transform:translate(0,0) scale(1)!important;
 }
 .field-unit.active.attack-stage-approach .battle-unit-sprite{animation:groundFootwork calc(.07s * var(--battle-time-scale)) steps(2,end) infinite!important}
@@ -3200,6 +3209,12 @@ html.game-background-paused *::after{
   background-size:100% 100%!important;background-position:0 0!important;background-repeat:no-repeat!important;
   transition:clip-path .2s linear!important;
 }
+/* Only one HP bar asset exists (red), so the full/two-thirds/one-third health
+   read is done by hue-rotating it live rather than swapping textures — same
+   three-tier signal, single source image. Filter sits on the bar container so
+   it also tints the enemy status version's <i> fill without a second rule. */
+.mini-hp.hp-tier-green span,.enemy-status-hp.hp-tier-green i{filter:hue-rotate(100deg) saturate(1.3) brightness(1.05)!important}
+.mini-hp.hp-tier-yellow span,.enemy-status-hp.hp-tier-yellow i{filter:hue-rotate(45deg) saturate(1.15) brightness(1.05)!important}
 .mini-hp b,.burst-bar b{
   position:absolute!important;inset:0!important;z-index:2!important;
   display:flex!important;align-items:center!important;justify-content:center!important;

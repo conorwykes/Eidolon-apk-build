@@ -1358,6 +1358,18 @@ const HERO_FORMATION = [
   { right: 96, bottom: 28, width: 62 },
 ];
 
+// Full HP reads green, mid-health yellow, and the bar's own baseline red art
+// covers the low tier untouched — same three-stage read as a full/two-thirds/
+// one-third split, just implemented as a hue-rotate over the single red bar
+// asset this project has rather than swapping between dedicated bar textures.
+function getHpTierClass(hp: number, maxHp: number): string {
+  if (maxHp <= 0) return "hp-tier-red";
+  const percent = hp / maxHp;
+  if (percent >= 1) return "hp-tier-green";
+  if (percent >= 1 / 3) return "hp-tier-yellow";
+  return "hp-tier-red";
+}
+
 function getTopPriorityEnemy(enemies: EnemyInstance[]) {
   const formation = ENEMY_FORMATIONS[enemies.length] ?? [];
   return enemies
@@ -2770,7 +2782,10 @@ export default function GatesOfAzura() {
       playSfx("burst");
       await waitForBattle(90);
     } else {
-      await waitForBattle(180);
+      // Matches the approach-stage CSS animation duration (globals.css,
+      // attack-stage-approach) so the JS phase change and the visible travel
+      // finish together instead of one cutting the other off.
+      await waitForBattle(320);
     }
 
     const attackPower = getFormStat(unit, stars, save.unitLevels[unitId] ?? 1, "atk");
@@ -3053,7 +3068,10 @@ export default function GatesOfAzura() {
     const resolved = battleRef.current;
     if (resolved) updateBattleLive((state) => ({ ...state, message: `${unit.name} completes ${burst ? combatProfile.burstName : combatProfile.attackName}. Tap another unit—overlap attacks to Spark.` }));
     setAttackFxs((current) => current.map((fx) => fx.id === attackId ? { ...fx, stage: "return" } : fx));
-    await waitForBattle(140);
+    // Equal weight to the approach travel (see attack-stage-return in
+    // globals.css) — going to the target and coming back read as the same
+    // deliberate motion instead of a slow approach and a rushed snap home.
+    await waitForBattle(320);
     setAttackFxs((current) => current.filter((fx) => fx.id !== attackId));
     activeAttackIds.current.delete(unitId);
     await advanceModernBattle();
@@ -4030,7 +4048,7 @@ export default function GatesOfAzura() {
               <strong>{targetedEnemyLabel}</strong>
             </div>
             <div className="enemy-status-hp-row">
-              <div className="enemy-status-hp" aria-label={`${targetedEnemy.name} health: ${Math.max(0, statusInstance.hp).toLocaleString()} of ${statusInstance.maxHp.toLocaleString()}`}>
+              <div className={`enemy-status-hp ${getHpTierClass(statusInstance.hp, statusInstance.maxHp)}`} aria-label={`${targetedEnemy.name} health: ${Math.max(0, statusInstance.hp).toLocaleString()} of ${statusInstance.maxHp.toLocaleString()}`}>
                 <i style={{ clipPath: `inset(0 ${100 - Math.max(0, Math.min(100, statusInstance.hp / statusInstance.maxHp * 100))}% 0 0)` }} />
               </div>
             </div>
@@ -4078,7 +4096,7 @@ export default function GatesOfAzura() {
                 >
                   <BattleFacePortrait unit={unit} stars={stars} />
                   <div className="battle-unit-data"><span className="battle-unit-name">{unit.name} <i>{stars}★</i></span><small>{isQueued ? "CHAIN ACTIVE" : member.guarding ? "GUARDING" : member.acted ? "ACTED" : canBurst ? "BURST READY" : unit.role.toUpperCase()}</small>
-                    <div className="mini-hp"><span style={{ clipPath: `inset(0 ${100 - Math.max(0, Math.min(100, member.hp / maxHp * 100))}% 0 0)` }} /><b>{member.hp.toLocaleString()}/{maxHp.toLocaleString()}</b></div>
+                    <div className={`mini-hp ${getHpTierClass(member.hp, maxHp)}`}><span style={{ clipPath: `inset(0 ${100 - Math.max(0, Math.min(100, member.hp / maxHp * 100))}% 0 0)` }} /><b>{member.hp.toLocaleString()}/{maxHp.toLocaleString()}</b></div>
                     <div className="burst-bar"><span style={{ clipPath: `inset(0 ${100 - Math.max(0, Math.min(100, member.gauge))}% 0 0)` }} /><b>{member.gauge}% BB</b></div>
                   </div>
                 </button>
