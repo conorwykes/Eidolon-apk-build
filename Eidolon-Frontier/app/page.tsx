@@ -88,6 +88,20 @@ const CRITICAL_CHANCE = 1 / 32;
 const CRITICAL_DAMAGE_MULTIPLIER = 1.5;
 const SPARK_DAMAGE_MULTIPLIER = 1.25;
 
+// Gap between Auto launching one ready unit's attack and the next, rather
+// than waiting for each to fully finish before starting the following one.
+// Small enough that several units' swings still overlap (so Spark can
+// trigger during Auto, same as manual multi-tapping), large enough that the
+// cascade still reads as individual launches instead of one simultaneous
+// pile.
+const AUTO_TURN_STAGGER_MS = 220;
+
+// Serializes Burst cut-in overlays across concurrently in-flight attacks —
+// without it, two units bursting close together (most likely during Auto,
+// now that attacks can overlap) would fight over the single overlay slot
+// instead of each getting a full, uninterrupted cut-in.
+const BURST_CUT_IN_GAP_MS = 20;
+
 export type Unit = {
   id: BattleUnitId;
   name: string;
@@ -1730,6 +1744,10 @@ export default function GatesOfAzura() {
   const battleRef = useRef<BattleState | null>(null);
   const activeAttackIds = useRef(new Set<string>());
   const autoTurnLock = useRef(false);
+  // Promise-chain mutex so concurrently in-flight Bursts play their cut-in
+  // overlays one after another instead of the newest silently taking over
+  // the single overlay slot. See playActionTimeline.
+  const burstCutInLock = useRef<Promise<void>>(Promise.resolve());
   const pendingSparkImpacts = useRef<PendingSparkImpact[]>([]);
   const sparkFrameRequest = useRef<number | null>(null);
   const lastSparkAt = useRef(0);
@@ -1741,6 +1759,11 @@ export default function GatesOfAzura() {
   const sfxBuffers = useRef<Map<SfxKind, AudioBuffer>>(new Map());
   const sfxLoading = useRef<Map<SfxKind, Promise<AudioBuffer | null>>>(new Map());
   const gameBackgroundPaused = useRef(false);
+  // A Burst cut-in pauses every OTHER in-flight attack's progress for its
+  // duration — the cut-in unit's own timing bypasses this (see
+  // waitForBattle's ignoreCutInPause param), everyone else's freezes and
+  // resumes exactly where it left off once the cut-in (plus its gap) ends.
+  const cutInPaused = useRef(false);
   const backgroundResumeWaiters = useRef(new Set<() => void>());
   const homeSwipe = useRef({ pointerId: -1, startX: 0, startTime: 0, width: 320, moved: false });
   const unitHold = useRef<{ timer: ReturnType<typeof setTimeout> | null; suppressClick: boolean }>({ timer: null, suppressClick: false });
@@ -1758,20 +1781,31 @@ export default function GatesOfAzura() {
   // Every combat layer uses the same shortened cadence. When the page/app is
   // backgrounded we deliberately stop advancing this clock, so a turn cannot
   // finish while the player is in another tab or app.
-  const waitForForeground = () => new Promise<void>((resolve) => {
-    if (!gameBackgroundPaused.current) {
+  const waitForForeground = (ignoreCutInPause = false) => new Promise<void>((resolve) => {
+    if (!gameBackgroundPaused.current && (ignoreCutInPause || !cutInPaused.current)) {
       resolve();
       return;
     }
     backgroundResumeWaiters.current.add(resolve);
   });
-  const waitForBattle = async (milliseconds: number) => {
+  // ignoreCutInPause is for the unit whose own Burst cut-in IS what's
+  // holding cutInPaused true — its cinematic keeps ticking while every
+  // other caller of waitForBattle freezes for the same duration.
+  const waitForBattle = async (milliseconds: number, ignoreCutInPause = false) => {
     let remaining = getBattleDuration(milliseconds, battleSpeed);
     while (remaining > 0) {
-      await waitForForeground();
+      await waitForForeground(ignoreCutInPause);
       const slice = Math.min(remaining, 50);
       await new Promise<void>((resolve) => window.setTimeout(resolve, slice));
-      if (!gameBackgroundPaused.current) remaining -= slice;
+      if (!gameBackgroundPaused.current && (ignoreCutInPause || !cutInPaused.current)) remaining -= slice;
+    }
+  };
+  const setCutInPaused = (paused: boolean) => {
+    cutInPaused.current = paused;
+    if (!paused && !gameBackgroundPaused.current && backgroundResumeWaiters.current.size) {
+      const waiters = [...backgroundResumeWaiters.current];
+      backgroundResumeWaiters.current.clear();
+      waiters.forEach((resume) => resume());
     }
   };
 
@@ -2698,12 +2732,34 @@ export default function GatesOfAzura() {
     }]);
     playSfx(timeline.launchSfx);
 
-    for (const node of timeline.approach) {
+    const playApproachNode = async (node: (typeof timeline.approach)[number], ignoreCutInPause = false) => {
       if (Object.keys(node.patch).length > 0) {
         setAttackFxs((current) => current.map((fx) => fx.id === timeline.attackId ? { ...fx, ...node.patch } : fx));
       }
       if (node.sfx) playSfx(node.sfx);
-      await waitForBattle(node.holdMs);
+      await waitForBattle(node.holdMs, ignoreCutInPause);
+    };
+
+    if (timeline.burst) {
+      // The first approach node is the named-character cut-in (phase stays
+      // "burst-intro" for its whole duration). Only that node is serialized
+      // — the rest of the attack plays freely and can overlap with anyone
+      // else's, same as a normal attack. While it plays, every other
+      // in-flight attack's own progress is paused so the cut-in reads as a
+      // real cinematic beat instead of a name card over a busy battlefield.
+      const [cutInNode, ...restApproach] = timeline.approach;
+      const myTurn = burstCutInLock.current;
+      let releaseTurn = () => {};
+      burstCutInLock.current = new Promise((resolve) => { releaseTurn = resolve; });
+      await myTurn;
+      setCutInPaused(true);
+      if (cutInNode) await playApproachNode(cutInNode, true);
+      await waitForBattle(BURST_CUT_IN_GAP_MS, true);
+      setCutInPaused(false);
+      releaseTurn();
+      for (const node of restApproach) await playApproachNode(node);
+    } else {
+      for (const node of timeline.approach) await playApproachNode(node);
     }
 
     for (const beat of timeline.beats) {
@@ -2864,9 +2920,9 @@ export default function GatesOfAzura() {
     await advanceModernBattle();
   };
 
-  const queueAttack = async (unitId: string, wantsBurst = false, fromAuto = false) => {
+  const queueAttack = async (unitId: string, wantsBurst = false) => {
     const opening = battleRef.current;
-    if (!opening || victory || enemyTurnLock.current || battleFlowLock.current || (autoTurnLock.current && !fromAuto)) return;
+    if (!opening || victory || enemyTurnLock.current || battleFlowLock.current) return;
     const actor = opening.party.find((member) => member.id === unitId);
     if (!actor || actor.acted || actor.hp <= 0 || activeAttackIds.current.has(unitId)) return;
     const quest = QUESTS.find((item) => item.id === opening.questId)!;
@@ -2917,13 +2973,20 @@ export default function GatesOfAzura() {
     autoTurnLock.current = true;
     setAutoTurnActive(true);
     try {
+      const launches: Promise<void>[] = [];
       for (const unitId of turnOrder) {
         const live = battleRef.current;
         if (!live || live.turn !== startingTurn || live.wave !== startingWave || enemyTurnLock.current || battleFlowLock.current) break;
         const member = live.party.find((candidate) => candidate.id === unitId);
-        if (!member || member.acted || member.hp <= 0) continue;
-        await queueAttack(unitId, member.gauge >= 100, true);
+        if (!member || member.acted || member.hp <= 0 || activeAttackIds.current.has(unitId)) continue;
+        launches.push(queueAttack(unitId, member.gauge >= 100));
+        // Stagger auto-fired launches instead of waiting for each unit's
+        // whole swing to finish — lets several units' attacks overlap in
+        // flight (Spark can trigger during Auto too) rather than strictly
+        // one-at-a-time.
+        await waitForBattle(AUTO_TURN_STAGGER_MS);
       }
+      await Promise.all(launches);
     } finally {
       autoTurnLock.current = false;
       setAutoTurnActive(false);
@@ -2932,7 +2995,7 @@ export default function GatesOfAzura() {
 
   const queueGuard = async (unitId: string) => {
     const state = battleRef.current;
-    if (!state || victory || autoTurnLock.current || enemyTurnLock.current || battleFlowLock.current) return;
+    if (!state || victory || enemyTurnLock.current || battleFlowLock.current) return;
     const actor = state.party.find((member) => member.id === unitId);
     if (!actor || actor.acted || actor.hp <= 0) return;
     updateBattleLive((current) => ({
@@ -3542,10 +3605,18 @@ export default function GatesOfAzura() {
           : battleStageSrc.includes("reliquary")
             ? "reliquary"
             : "causeway";
+    // Concurrently-launched bursts are serialized onto this one overlay slot
+    // (see burstCutInLock in playActionTimeline) — the fx that's been in
+    // "burst-intro" phase longest is the one actually holding the lock and
+    // playing its cut-in right now; later ones stay queued behind it.
     const burstIntroFxs = attackFxs.filter((fx) => fx.phase === "burst-intro");
-    const burstIntroFx = burstIntroFxs[burstIntroFxs.length - 1];
+    const burstIntroFx = burstIntroFxs[0];
     const burstIntroUnit = burstIntroFx ? getUnit(burstIntroFx.unitId) : null;
-    const actionLocked = autoTurnActive || enemyTurnLock.current || battleFlowLock.current || combatFx.phase === "enemy" || combatFx.phase === "opening" || combatFx.phase === "wave";
+    // Individual unit buttons already lock themselves via acted/activeAttackIds
+    // (see the battle-unit button below), so Auto running doesn't need to
+    // block the rest of the field — a player can tap another ready unit
+    // while Auto is mid-cascade, same as manual multi-tapping.
+    const actionLocked = enemyTurnLock.current || battleFlowLock.current || combatFx.phase === "enemy" || combatFx.phase === "opening" || combatFx.phase === "wave";
     return (
       <div
         className={`battle-screen battle-${targetedEnemy.element} battle-speed-${battleSpeed} fx-${combatFx.phase}`}
@@ -3560,7 +3631,7 @@ export default function GatesOfAzura() {
             <button
               className={`field-auto-button ${autoTurnActive ? "running" : ""}`}
               onClick={() => void queueAutoTurn()}
-              disabled={actionLocked || battle.party.every((member) => member.acted || member.hp <= 0)}
+              disabled={actionLocked || autoTurnActive || battle.party.every((member) => member.acted || member.hp <= 0)}
               aria-label={autoTurnActive ? "Auto turn in progress" : "Play every ready unit in sequence"}
             ><Play fill="currentColor" /><span>{autoTurnActive ? "RUN" : "AUTO"}</span></button>
           </div>
